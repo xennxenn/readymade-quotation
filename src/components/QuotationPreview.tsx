@@ -199,7 +199,7 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
             </tr>
 
             {/* Row 2: Items Table Column Header */}
-            <tr className="border-t border-b border-black text-center font-bold bg-slate-50/50">
+            <tr className="border-t border-b border-black text-center font-bold bg-white">
               <th className="py-1 px-1.5 border-l border-r border-black w-8">#</th>
               <th className="py-1 px-2 border-r border-black text-center">
                 รายการสินค้า
@@ -238,10 +238,10 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
               return (
                 <React.Fragment key={section.id}>
                   {/* Section Title Header (Centered bold bar across row) */}
-                  <tr className="border-b border-black bg-slate-100/60">
+                  <tr className="border-b border-black bg-white">
                     <td
                       colSpan={8}
-                      className="py-1 px-2 text-center font-bold text-[10.5px] border-l border-r border-b border-black"
+                      className="py-1 px-2 text-center font-bold text-[10.5px] border-l border-r border-b border-black bg-white"
                     >
                       {section.title}
                     </td>
@@ -253,7 +253,7 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
                     const formattedName = formatItemDescription(item);
 
                     return (
-                      <tr key={item.id} className="border-b border-black/30 hover:bg-slate-50/50">
+                      <tr key={item.id} className="border-b border-black/30 bg-white">
                         <td className="py-1 px-1 border-l border-r border-black text-center font-mono">
                           {idx + 1}
                         </td>
@@ -292,8 +292,8 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
                   })}
 
                   {/* Section Subtotal Row */}
-                  <tr className="border-b border-black font-semibold bg-slate-50/40">
-                    <td colSpan={5} className="py-1 px-2 text-right border-l border-r border-black">
+                  <tr className="border-b border-black font-semibold bg-white">
+                    <td colSpan={5} className="py-1 px-2 text-right border-l border-r border-black bg-white">
                       รวม / Total
                     </td>
                     <td className="py-1 px-1.5 border-r border-black text-right font-mono">
@@ -380,7 +380,7 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
               </div>
 
               {quotation.additionalDiscount?.enabled && (
-                <div className="flex justify-between py-1 px-2 text-indigo-900">
+                <div className="flex justify-between py-1 px-2 text-black bg-white">
                   <span className="font-medium">
                     {quotation.additionalDiscount.description || 'ส่วนลดเพิ่มเติม'}
                   </span>
@@ -413,7 +413,7 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
                 </span>
               </div>
 
-              <div className="flex justify-between py-1.5 px-2 font-bold bg-amber-50/50">
+              <div className="flex justify-between py-1.5 px-2 font-bold bg-white">
                 <span className="font-bold">ยอดค้างชำระ</span>
                 <span className="font-mono font-bold text-xs">
                   {calc.balanceRemaining.toLocaleString('en-US', {

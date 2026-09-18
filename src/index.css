@@ -21,11 +21,26 @@
     print-color-adjust: exact !important;
   }
 
-  body {
+  body,
+  #root,
+  main {
     background-color: white !important;
+    background: white !important;
     color: black !important;
     margin: 0 !important;
     padding: 0 !important;
+  }
+
+  .quotation-print-sheet,
+  .quotation-print-sheet div,
+  .quotation-print-sheet table,
+  .quotation-print-sheet thead,
+  .quotation-print-sheet tbody,
+  .quotation-print-sheet tr,
+  .quotation-print-sheet th,
+  .quotation-print-sheet td {
+    background-color: white !important;
+    background: white !important;
   }
 
   .quotation-print-sheet {
