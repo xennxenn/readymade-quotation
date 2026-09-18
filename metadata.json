@@ -1,0 +1,6 @@
+{
+  "name": "PASAYA - QUOTATION",
+  "description": "ระบบสร้างและจัดการใบเสนอราคา PASAYA Quotation Management System รองรับการแบ่งห้อง สั่งตัดพิเศษ บาร์โค้ด และพิมพ์แบบฟอร์ม A4 มาตรฐาน",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

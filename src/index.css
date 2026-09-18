@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Prompt', 'Sarabun', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@media print {
+  /* Hide UI elements during print */
+  .no-print,
+  nav,
+  header,
+  button,
+  .no-print * {
+    display: none !important;
+  }
+
+  body {
+    background-color: white !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .quotation-print-sheet {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 auto !important;
+    padding: 0.5cm 0.6cm !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 0.8cm 0.6cm 0.8cm 0.6cm;
+  }
+}
