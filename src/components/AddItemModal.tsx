@@ -288,7 +288,7 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
     const newItem: QuoteItem = {
       id: initialItem?.id || 'item-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
       isCustom,
-      barcode: matchedBarcode,
+      ...(matchedBarcode ? { barcode: matchedBarcode } : {}),
       collection: collection.trim(),
       description: isCustom ? 'สั่งตัดพิเศษ' : description,
       color: finalColor.trim(),
@@ -298,9 +298,9 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
       price: Math.max(0, price),
       discountPercent: Math.max(0, Math.min(100, discountPercent)),
       excludeOntopDiscount,
-      customPattern: isCustom ? customPattern : undefined,
-      customSizeUnit: isCustom ? customSizeUnit : undefined,
-      customSizeValue: isCustom ? customSizeValue.trim() : undefined,
+      ...(isCustom && customPattern ? { customPattern } : {}),
+      ...(isCustom && customSizeUnit ? { customSizeUnit } : {}),
+      ...(isCustom && customSizeValue.trim() ? { customSizeValue: customSizeValue.trim() } : {}),
     };
 
     onAddItem(newItem);

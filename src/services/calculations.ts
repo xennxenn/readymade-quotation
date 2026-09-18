@@ -23,26 +23,30 @@ export interface QuotationCalculation {
   additionalDiscountAmount: number;     // ส่วนลดอื่นๆ เพิ่มเติม
   finalNetAmount: number;               // ยอดสุทธิ
   depositAmount: number;                // ค่ามัดจำ
-  balanceRemaining: number;             // ยอดค้างชำระ
+  roundingDifference: number;           // ส่วนต่างจากการปัดเศษ
+  balanceRemaining: number;             // ยอดค้างชำระ (ปัดเศษสตางค์ลงเป็นจำนวนเต็ม)
+  rawBalanceRemaining: number;          // ยอดค้างชำระก่อนปัดเศษ
   itemCalculations: Map<string, ItemCalculation>;
   sectionCalculations: Map<string, SectionCalculation>;
 }
 
 export function formatItemDescription(item: QuoteItem): string {
+  const coll = (item.collection || '').trim();
+  const color = (item.color || '').trim();
+  // ใช้ "/" คั่นระหว่าง Collection และ Color โดยเว้นวรรคหน้าและหลัง
+  const collColor = coll && color ? `${coll} / ${color}` : (coll || color);
+
   if (item.isCustom) {
     // 8. รายการสินค้าสั่งตัดพิเศษจะแสดงข้อมูลในใบเสนอราคาคือ
-    // รูปแบบ เว้นวรรค ตามด้วย "-" เว้นวรรค ตามด้วย Collection เว้นวรรค ตามด้วย Color เว้นวรรค ตามด้วย Size ที่ระบุพร้อมหน่วย
-    const pattern = item.customPattern || 'สั่งตัดพิเศษ';
-    const coll = item.collection || '';
-    const color = item.color || '';
-    const size = item.customSizeValue || item.size || '';
-    return `${pattern} - ${coll} ${color} ${size}`.replace(/\s+/g, ' ').trim();
+    // รูปแบบ เว้นวรรค ตามด้วย "-" เว้นวรรค ตามด้วย Collection เว้นวรรค "/" เว้นวรรค Color เว้นวรรค ตามด้วย Size ที่ระบุพร้อมหน่วย
+    const pattern = (item.customPattern || 'สั่งตัดพิเศษ').trim();
+    const size = (item.customSizeValue || item.size || '').trim();
+    return `${pattern} - ${collColor} ${size}`.replace(/\s+/g, ' ').trim();
   } else {
     // 7. รายการสินค้าปกติจะแสดงข้อมูลในใบเสนอราคาคือ
     // Description เว้นวรรค ตามด้วย Color เว้นวรรค ตามด้วย Size
-    const desc = item.description || '';
-    const color = item.color || '';
-    const size = item.size || '';
+    const desc = (item.description || '').trim();
+    const size = (item.size || '').trim();
     return `${desc} ${color} ${size}`.replace(/\s+/g, ' ').trim();
   }
 }
@@ -142,10 +146,16 @@ export function calculateQuotation(quotation: Quotation): QuotationCalculation {
     depositAmount = finalNetAmount * 0.5;
   }
 
-  const balanceRemaining =
+  const rawBalanceRemaining =
     quotation.customer.paymentCondition === 'ชำระเงิน 100%'
       ? finalNetAmount
       : Math.max(0, finalNetAmount - depositAmount);
+
+  // ปัดเศษสตางค์ลงเป็นจำนวนเต็มทุกครั้ง (Math.floor)
+  const normalizedRawBalance = Math.round(rawBalanceRemaining * 100) / 100;
+  const balanceRemaining = Math.floor(normalizedRawBalance);
+  // ส่วนต่างจากการปัดเศษ (เศษสตางค์ที่ถูกปัดลง)
+  const roundingDifference = Math.round((normalizedRawBalance - balanceRemaining) * 100) / 100;
 
   return {
     totalGrossAmount,
@@ -155,7 +165,9 @@ export function calculateQuotation(quotation: Quotation): QuotationCalculation {
     additionalDiscountAmount,
     finalNetAmount,
     depositAmount,
+    roundingDifference,
     balanceRemaining,
+    rawBalanceRemaining: normalizedRawBalance,
     itemCalculations: itemCalcs,
     sectionCalculations: sectionCalcs,
   };

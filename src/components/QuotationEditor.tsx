@@ -26,6 +26,7 @@ import {
   PaymentConditionOption,
 } from '../types';
 import { calculateQuotation, formatItemDescription } from '../services/calculations';
+import { thaiBahtText } from '../services/thaiBaht';
 import { AddItemModal } from './AddItemModal';
 import { SearchableSelect, SearchableOption } from './SearchableSelect';
 
@@ -384,23 +385,8 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
               </div>
             </div>
 
-            {/* Row 3: Tax ID & Phone */}
+            {/* Row 3: Phone & Tax ID */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                  <Building className="w-3.5 h-3.5 text-slate-400" />
-                  เลขที่ประจำตัวผู้เสียภาษี (Tax ID){' '}
-                  <span className="text-slate-400 font-normal">(ตัวเลือก)</span>
-                </label>
-                <input
-                  type="text"
-                  value={quotation.customer.taxId}
-                  onChange={(e) => updateCustomer('taxId', e.target.value)}
-                  placeholder="เช่น 0105546015615 หรือ -"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-indigo-500 font-mono"
-                />
-              </div>
-
               <div>
                 <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1">
                   <Phone className="w-3.5 h-3.5 text-slate-400" />
@@ -412,6 +398,21 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
                   value={quotation.customer.phone}
                   onChange={(e) => updateCustomer('phone', e.target.value)}
                   placeholder="เช่น 081-573-7941"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-indigo-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                  <Building className="w-3.5 h-3.5 text-slate-400" />
+                  เลขที่ประจำตัวผู้เสียภาษี (Tax ID){' '}
+                  <span className="text-slate-400 font-normal">(ตัวเลือก)</span>
+                </label>
+                <input
+                  type="text"
+                  value={quotation.customer.taxId}
+                  onChange={(e) => updateCustomer('taxId', e.target.value)}
+                  placeholder="เช่น 0105546015615 หรือ -"
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-indigo-500 font-mono"
                 />
               </div>
@@ -946,7 +947,20 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
               <div className="flex justify-between py-1 border-b border-slate-100 text-slate-700">
                 <span>ค่ามัดจำ:</span>
                 <span className="font-mono font-medium">
-                  {calc.depositAmount.toLocaleString()} ฿
+                  {calc.depositAmount.toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })} ฿
+                </span>
+              </div>
+
+              <div className="flex justify-between py-1 border-b border-slate-100 text-slate-700">
+                <span>ส่วนต่างจากการปัดเศษ:</span>
+                <span className="font-mono font-medium text-slate-600">
+                  {calc.roundingDifference.toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })} ฿
                 </span>
               </div>
             </div>
@@ -956,12 +970,15 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
             <div className="flex justify-between items-baseline">
               <span className="text-sm font-bold text-slate-900">ยอดค้างชำระ / ยอดสุทธิ:</span>
               <span className="text-2xl font-black font-mono text-indigo-700">
-                {calc.balanceRemaining.toLocaleString()} ฿
+                {calc.balanceRemaining.toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })} ฿
               </span>
             </div>
 
             <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-center font-bold text-xs text-amber-900">
-              ตัวอักษรภาษาไทย: {calc.balanceRemaining.toLocaleString()} บาท
+              ตัวอักษรภาษาไทย: {thaiBahtText(calc.balanceRemaining)}
             </div>
           </div>
         </div>

@@ -1,6 +1,7 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import {
   getFirestore,
+  initializeFirestore,
   collection,
   doc,
   setDoc,
@@ -118,10 +119,23 @@ export function getCloudFirestore(): Firestore | null {
     }
 
     const dbId = config.databaseId || TARGET_DATABASE_ID;
-    if (dbId && dbId !== '(default)') {
-      firestoreDb = getFirestore(firebaseApp, dbId);
-    } else {
-      firestoreDb = getFirestore(firebaseApp);
+    try {
+      if (dbId && dbId !== '(default)') {
+        firestoreDb = initializeFirestore(firebaseApp, {
+          ignoreUndefinedProperties: true,
+        }, dbId);
+      } else {
+        firestoreDb = initializeFirestore(firebaseApp, {
+          ignoreUndefinedProperties: true,
+        });
+      }
+    } catch {
+      // If already initialized, fallback to getFirestore
+      if (dbId && dbId !== '(default)') {
+        firestoreDb = getFirestore(firebaseApp, dbId);
+      } else {
+        firestoreDb = getFirestore(firebaseApp);
+      }
     }
 
     return firestoreDb;
@@ -129,6 +143,32 @@ export function getCloudFirestore(): Firestore | null {
     console.error('Error initializing Firebase Firestore:', err);
     return null;
   }
+}
+
+/**
+ * Deeply sanitizes any payload destined for Firestore by stripping out
+ * all `undefined` fields and cleaning arrays, preventing the notorious
+ * "Unsupported field value: undefined" Firestore error.
+ */
+export function sanitizeForFirestore<T>(data: T): T {
+  if (data === undefined) {
+    return null as unknown as T;
+  }
+  if (data === null || typeof data !== 'object') {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data
+      .filter((item) => item !== undefined)
+      .map((item) => sanitizeForFirestore(item)) as unknown as T;
+  }
+  const clean: Record<string, any> = {};
+  for (const [key, value] of Object.entries(data as Record<string, any>)) {
+    if (value !== undefined) {
+      clean[key] = sanitizeForFirestore(value);
+    }
+  }
+  return clean as T;
 }
 
 export function isCloudSyncEnabled(): boolean {
@@ -357,10 +397,11 @@ export async function uploadQuotationToCloud(quote: Quotation): Promise<boolean>
 
   try {
     const quoteRef = doc(db, 'quotations', quote.id);
-    await setDoc(quoteRef, {
+    const sanitizedData = sanitizeForFirestore({
       ...quote,
       updatedAt: Date.now(),
     });
+    await setDoc(quoteRef, sanitizedData);
     return true;
   } catch (err) {
     console.error('Error writing quotation to Firestore:', err);
@@ -388,7 +429,7 @@ export async function uploadStaffToCloud(staff: StaffMember): Promise<boolean> {
 
   try {
     const staffRef = doc(db, 'staff', staff.id);
-    await setDoc(staffRef, staff, { merge: true });
+    await setDoc(staffRef, sanitizeForFirestore(staff), { merge: true });
     return true;
   } catch (err) {
     console.error('Error writing staff to Firestore:', err);
@@ -416,7 +457,7 @@ export async function uploadPromotionGroupToCloud(group: PromotionGroup): Promis
 
   try {
     const groupRef = doc(db, 'promotionGroups', group.id);
-    await setDoc(groupRef, group, { merge: true });
+    await setDoc(groupRef, sanitizeForFirestore(group), { merge: true });
     return true;
   } catch (err) {
     console.error('Error writing promotion group to Firestore:', err);
@@ -444,7 +485,7 @@ export async function uploadCompanySettingsToCloud(settings: CompanySettings): P
 
   try {
     const settingsRef = doc(db, 'settings', 'company');
-    await setDoc(settingsRef, settings, { merge: true });
+    await setDoc(settingsRef, sanitizeForFirestore(settings), { merge: true });
     return true;
   } catch (err) {
     console.error('Error writing company settings to Firestore:', err);
@@ -458,7 +499,7 @@ export async function uploadProductToCloud(product: Product): Promise<boolean> {
 
   try {
     const prodRef = doc(db, 'products', product.id);
-    await setDoc(prodRef, product, { merge: true });
+    await setDoc(prodRef, sanitizeForFirestore(product), { merge: true });
     return true;
   } catch (err) {
     console.error('Error writing product to Firestore:', err);
@@ -478,7 +519,7 @@ export async function batchUploadProductsToCloud(products: Product[]): Promise<b
       const batch = writeBatch(db);
       for (const p of chunk) {
         const pRef = doc(db, 'products', p.id);
-        batch.set(pRef, p, { merge: true });
+        batch.set(pRef, sanitizeForFirestore(p), { merge: true });
       }
       await batch.commit();
     }
@@ -531,7 +572,7 @@ export async function initializeCloudDatabaseSeed(): Promise<{
     const adminRef = doc(db, 'staff', 'st-admin-t58121');
     const adminSnap = await getDoc(adminRef);
     if (!adminSnap.exists()) {
-      await setDoc(adminRef, {
+      await setDoc(adminRef, sanitizeForFirestore({
         id: 'st-admin-t58121',
         name: 'ผู้ดูแลระบบ (Admin)',
         employeeId: 'T58121',
@@ -539,7 +580,7 @@ export async function initializeCloudDatabaseSeed(): Promise<{
         role: 'admin',
         phone: '02-440-0955',
         createdAt: Date.now(),
-      });
+      }));
       result.seededStaff = true;
     }
 
@@ -548,7 +589,7 @@ export async function initializeCloudDatabaseSeed(): Promise<{
     if (promoSnap.empty) {
       const batch = writeBatch(db);
       for (const pg of INITIAL_PROMOTION_GROUPS) {
-        batch.set(doc(db, 'promotionGroups', pg.id), pg);
+        batch.set(doc(db, 'promotionGroups', pg.id), sanitizeForFirestore(pg));
       }
       await batch.commit();
       result.seededPromos = true;
@@ -558,7 +599,7 @@ export async function initializeCloudDatabaseSeed(): Promise<{
     const settingsDoc = doc(db, 'settings', 'company');
     const settingsSnap = await getDoc(settingsDoc);
     if (!settingsSnap.exists()) {
-      await setDoc(settingsDoc, DEFAULT_COMPANY_SETTINGS);
+      await setDoc(settingsDoc, sanitizeForFirestore(DEFAULT_COMPANY_SETTINGS));
       result.seededSettings = true;
     }
 
