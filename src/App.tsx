@@ -100,7 +100,7 @@ function createDefaultEmptyQuotation(adminName = '', salesName = ''): Quotation 
       'ผู้สั่งซื้อจะต้องชำระเงินครบทั้งหมด ก่อนดำเนินการสั่งผลิต',
       'รอสินค้า 2-7 วันทำการ',
     ],
-    inspectorName: '',
+    inspectorName: adminName,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -283,7 +283,7 @@ export default function App() {
 
   const executeCreateNewQuotation = () => {
     const today = new Date().toISOString().split('T')[0];
-    const defaultAdmin = staffList.find((s) => s.role === 'admin' || s.role === 'manager')?.name || '';
+    const defaultAdmin = staffList.find((s) => s.role === 'admin')?.name || '';
     
     // If current logged-in user is staff, set them as the salesperson automatically
     const defaultSale = currentUser?.role === 'staff' 
@@ -328,7 +328,7 @@ export default function App() {
         'ผู้สั่งซื้อจะต้องชำระเงินครบทั้งหมด ก่อนดำเนินการสั่งผลิต',
         'รอสินค้า 2-7 วันทำการ',
       ],
-      inspectorName: staffList.find((s) => s.role === 'manager')?.name || '',
+      inspectorName: defaultAdmin,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };

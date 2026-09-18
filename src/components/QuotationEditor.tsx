@@ -265,7 +265,8 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
     });
   };
 
-  const adminStaff = staffList.filter((s) => s.role === 'admin' || s.role === 'manager' || s.role === 'staff');
+  // ผู้ตรวจสอบ / Inspector คือ ผู้ตรวจสอบคือ ผู้ดูแล/Admin ดึงรายชื่อมาแสดง ไม่ใช่ผู้จัดการ
+  const adminStaff = staffList.filter((s) => s.role === 'admin');
   const salesStaff = staffList.filter((s) => s.role === 'staff' || s.role === 'manager' || s.role === 'admin');
 
   const validityOptions: SearchableOption[] = [
@@ -284,12 +285,12 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
   ];
 
   const adminStaffOptions: SearchableOption[] = [
-    { value: '', label: '-- เลือกผู้ดูแล --' },
+    { value: '', label: '-- เลือกผู้ตรวจสอบ (ผู้ดูแล/Admin) --' },
     ...adminStaff.map((s) => ({
       value: s.name,
       label: s.employeeId ? `[${s.employeeId}] ${s.name}` : s.name,
       sublabel: `โทร: ${s.phone || '-'}`,
-      badge: s.role === 'manager' ? 'ผู้จัดการ' : s.role === 'admin' ? 'แอดมิน' : 'พนักงาน',
+      badge: 'ผู้ดูแล/Admin',
     })),
   ];
 
@@ -511,18 +512,27 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
               )}
             </div>
 
-            {/* ผู้ดูแล (Admin) */}
+            {/* ผู้ตรวจสอบ (ผู้ดูแล/Admin) */}
             <div>
               <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1">
                 <UserCheck className="w-3.5 h-3.5 text-slate-400" />
-                ผู้ดูแล (Admin)
+                ผู้ตรวจสอบ / Inspector (ผู้ดูแล/Admin)
               </label>
               <SearchableSelect
                 options={adminStaffOptions}
-                value={quotation.customer.adminName}
-                onChange={(val) => updateCustomer('adminName', val)}
-                placeholder="-- เลือกผู้ดูแล --"
-                searchPlaceholder="ค้นหาชื่อหรือรหัสผู้ดูแล..."
+                value={quotation.customer.adminName || quotation.inspectorName || ''}
+                onChange={(val) => {
+                  onChange({
+                    ...quotation,
+                    inspectorName: val,
+                    customer: {
+                      ...quotation.customer,
+                      adminName: val,
+                    },
+                  });
+                }}
+                placeholder="-- เลือกผู้ตรวจสอบ (ผู้ดูแล/Admin) --"
+                searchPlaceholder="ค้นหาชื่อหรือรหัสผู้ดูแล/Admin..."
               />
             </div>
 

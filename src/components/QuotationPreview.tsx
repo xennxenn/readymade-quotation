@@ -41,15 +41,18 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
         s.name.includes(salesPersonName))
   );
 
-  // Identify Inspector / Admin (ผู้ตรวจสอบคือผู้ดูแล)
-  const inspectorStaff =
-    staffList.find(
-      (s) =>
-        (quotation.inspectorName &&
-          (s.name === quotation.inspectorName || s.employeeId === quotation.inspectorName)) ||
-        s.role === 'manager' ||
-        s.role === 'admin'
-    ) || staffList.find((s) => s.role === 'admin');
+  // Identify Inspector / Admin: ยึดรายชื่อผู้ตรวจสอบตามที่ระบุใน "ผู้ดูแล/Admin :" ในใบเสนอราคานั้นๆ
+  const adminNameInQuotation = (quotation.customer?.adminName || quotation.inspectorName || '').trim();
+
+  const inspectorStaff = adminNameInQuotation
+    ? staffList.find(
+        (s) =>
+          s.name === adminNameInQuotation ||
+          s.employeeId === adminNameInQuotation ||
+          (s.name &&
+            (s.name.includes(adminNameInQuotation) || adminNameInQuotation.includes(s.name)))
+      )
+    : null;
 
   const handlePrint = () => {
     window.print();
@@ -219,7 +222,7 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
                     </div>
                     <div className="flex items-baseline pt-1">
                       <span className="font-medium shrink-0 mr-1">ผู้ดูแล/Admin :</span>
-                      <span className="truncate">{quotation.customer.adminName || '-'}</span>
+                      <span className="truncate">{adminNameInQuotation || '-'}</span>
                     </div>
                     <div className="flex items-baseline">
                       <span className="font-medium shrink-0 mr-1">พนักงานขาย/Sale :</span>
@@ -494,7 +497,7 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
             </div>
             <div className="border-b border-black w-4/5 mx-auto"></div>
             <div className="font-bold pt-1 text-[10px]">
-              ( {inspectorStaff?.name || quotation.inspectorName || '...........................................'} )
+              ( {adminNameInQuotation || inspectorStaff?.name || '...........................................'} )
             </div>
             <div className="font-bold text-[10px] text-black">ผู้ตรวจสอบ / Inspector (ผู้ดูแล)</div>
             <div className="text-[9.5px] text-black font-mono">
