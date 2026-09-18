@@ -33,21 +33,59 @@ export interface QuotationCalculation {
 export function formatItemDescription(item: QuoteItem): string {
   const coll = (item.collection || '').trim();
   const color = (item.color || '').trim();
-  // ใช้ "/" คั่นระหว่าง Collection และ Color โดยเว้นวรรคหน้าและหลัง
-  const collColor = coll && color ? `${coll} / ${color}` : (coll || color);
+  const size = (item.customSizeValue || item.size || '').trim();
+
+  // ใช้ "/" คั่นระหว่าง Collection และ Color โดยมีเว้นวรรคหน้าและหลังเสมอ
+  const collSlashColor = coll && color ? `${coll} / ${color}` : (coll || color);
 
   if (item.isCustom) {
-    // 8. รายการสินค้าสั่งตัดพิเศษจะแสดงข้อมูลในใบเสนอราคาคือ
-    // รูปแบบ เว้นวรรค ตามด้วย "-" เว้นวรรค ตามด้วย Collection เว้นวรรค "/" เว้นวรรค Color เว้นวรรค ตามด้วย Size ที่ระบุพร้อมหน่วย
-    const pattern = (item.customPattern || 'สั่งตัดพิเศษ').trim();
-    const size = (item.customSizeValue || item.size || '').trim();
-    return `${pattern} - ${collColor} ${size}`.replace(/\s+/g, ' ').trim();
+    // รายการสินค้าสั่งตัดพิเศษ: รูปแบบ - Collection / Color Size
+    // หากในชื่อรูปแบบมี Collection อยู่แล้ว จะไม่แสดง Collection ซ้ำ
+    const rawPattern = (item.customPattern || 'สั่งตัดพิเศษ').trim();
+
+    if (!collSlashColor) {
+      return `${rawPattern} ${size}`.replace(/\s+/g, ' ').trim();
+    }
+
+    // ตรวจสอบว่าใน rawPattern มีชื่อ Collection อยู่แล้วหรือไม่
+    if (coll && rawPattern.toLowerCase().includes(coll.toLowerCase())) {
+      if (color) {
+        return `${rawPattern} / ${color} ${size}`.replace(/\s+/g, ' ').trim();
+      }
+      return `${rawPattern} ${size}`.replace(/\s+/g, ' ').trim();
+    }
+
+    const cleanPattern = rawPattern.replace(/[-–—]\s*$/, '').trim();
+    return `${cleanPattern} - ${collSlashColor} ${size}`.replace(/\s+/g, ' ').trim();
   } else {
-    // 7. รายการสินค้าปกติจะแสดงข้อมูลในใบเสนอราคาคือ
-    // Description เว้นวรรค ตามด้วย Color เว้นวรรค ตามด้วย Size
-    const desc = (item.description || '').trim();
-    const size = (item.size || '').trim();
-    return `${desc} ${color} ${size}`.replace(/\s+/g, ' ').trim();
+    // สินค้าในฐานข้อมูลสินค้า:
+    // ใช้ "/" คั่นระหว่าง Collection และ Color (เว้นวรรคหน้าและหลัง)
+    // แสดงแค่ตัวคั่น "/" เพราะมีข้อมูล Collection และ Color อยู่แล้ว และไม่ต้องแสดง Collection ซ้ำ
+    const rawDesc = (item.description || '').trim();
+
+    if (!rawDesc) {
+      return `${collSlashColor} ${size}`.replace(/\s+/g, ' ').trim();
+    }
+
+    // ตรวจสอบว่าใน Description มีชื่อ Collection อยู่แล้วหรือไม่ (เช่น "ผ้าปูที่นอน KUBUA")
+    if (coll && rawDesc.toLowerCase().includes(coll.toLowerCase())) {
+      // ใน Description มี Collection อยู่แล้ว -> แสดงแค่ตัวคั่น " / " และ Color เพื่อไม่ให้แสดง Collection ซ้ำ
+      if (color) {
+        // หากใน Description มี Color อยู่ด้วยแล้ว
+        if (rawDesc.toLowerCase().includes(color.toLowerCase())) {
+          return `${rawDesc} ${size}`.replace(/\s+/g, ' ').trim();
+        }
+        return `${rawDesc} / ${color} ${size}`.replace(/\s+/g, ' ').trim();
+      }
+      return `${rawDesc} ${size}`.replace(/\s+/g, ' ').trim();
+    }
+
+    // หากใน Description ยังไม่มี Collection ให้แสดง Description ตามด้วย Collection / Color Size
+    if (collSlashColor) {
+      return `${rawDesc} ${collSlashColor} ${size}`.replace(/\s+/g, ' ').trim();
+    }
+
+    return `${rawDesc} ${size}`.replace(/\s+/g, ' ').trim();
   }
 }
 

@@ -22,6 +22,7 @@ import {
 } from '../services/db';
 import { formatItemDescription } from '../services/calculations';
 import { SearchableSelect, SearchableOption } from './SearchableSelect';
+import { DirectNumberInput } from './DirectNumberInput';
 
 interface AddItemModalProps {
   isOpen: boolean;
@@ -587,14 +588,13 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     ระบุราคาต่อหน่วย (@Price ฿) <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="10"
+                  <DirectNumberInput
+                    min={0}
+                    allowZero={true}
                     value={price ?? 0}
-                    onChange={(e) => setPrice(parseFloat(e.target.value) || 0)}
+                    onChange={(val) => setPrice(val)}
                     placeholder="เช่น 9350"
-                    className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg text-slate-800 text-sm font-semibold focus:ring-2 focus:ring-amber-500"
+                    className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg text-slate-800 text-sm font-semibold focus:ring-2 focus:ring-amber-500 font-mono"
                   />
                 </div>
               </div>
@@ -644,12 +644,12 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   จำนวน (Qty)
                 </label>
-                <input
-                  type="number"
-                  min="1"
+                <DirectNumberInput
+                  min={1}
+                  allowZero={false}
                   value={quantity ?? 1}
-                  onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-800 text-sm font-semibold"
+                  onChange={(val) => setQuantity(val)}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-800 text-sm font-semibold font-mono text-center"
                 />
               </div>
 
@@ -673,16 +673,15 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
                   ราคาต่อหน่วย (@Price)
                 </label>
                 <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    step="10"
+                  <DirectNumberInput
+                    min={0}
+                    allowZero={true}
                     value={price ?? 0}
-                    onChange={(e) => setPrice(parseFloat(e.target.value) || 0)}
+                    onChange={(val) => setPrice(val)}
                     disabled={!isCustom && entryMode === 'barcode'}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-800 text-sm font-bold disabled:bg-slate-100"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-800 text-sm font-bold disabled:bg-slate-100 font-mono"
                   />
-                  <span className="absolute right-3 top-2.5 text-xs text-slate-400">฿</span>
+                  <span className="absolute right-3 top-2.5 text-xs text-slate-400 pointer-events-none">฿</span>
                 </div>
               </div>
 
@@ -697,16 +696,15 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
                   )}
                 </label>
                 <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="1"
+                  <DirectNumberInput
+                    min={0}
+                    max={100}
+                    allowZero={true}
                     value={discountPercent ?? 0}
-                    onChange={(e) => setDiscountPercent(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-800 text-sm font-semibold text-emerald-700"
+                    onChange={(val) => setDiscountPercent(val)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-800 text-sm font-semibold text-emerald-700 font-mono"
                   />
-                  <span className="absolute right-3 top-2.5 text-xs text-slate-400">%</span>
+                  <span className="absolute right-3 top-2.5 text-xs text-slate-400 pointer-events-none">%</span>
                 </div>
               </div>
             </div>

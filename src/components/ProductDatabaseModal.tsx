@@ -16,6 +16,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { Product } from '../types';
+import { DirectNumberInput } from './DirectNumberInput';
 import {
   searchProducts,
   getProductCount,
@@ -740,16 +741,14 @@ export const ProductDatabaseModal: React.FC<ProductDatabaseModalProps> = ({
                   <label className="block font-semibold text-slate-700 mb-1">
                     ราคา (@Price ฿) <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    required
+                  <DirectNumberInput
+                    min={0}
+                    allowZero={true}
                     value={editingProduct.price || 0}
-                    onChange={(e) =>
+                    onChange={(val) =>
                       setEditingProduct({
                         ...editingProduct,
-                        price: parseFloat(e.target.value) || 0,
+                        price: val,
                       })
                     }
                     className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-slate-800 font-bold focus:ring-2 focus:ring-blue-500 font-mono"

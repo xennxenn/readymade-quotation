@@ -29,6 +29,7 @@ import { calculateQuotation, formatItemDescription } from '../services/calculati
 import { thaiBahtText } from '../services/thaiBaht';
 import { AddItemModal } from './AddItemModal';
 import { SearchableSelect, SearchableOption } from './SearchableSelect';
+import { DirectNumberInput } from './DirectNumberInput';
 
 interface QuotationEditorProps {
   quotation: Quotation;
@@ -139,6 +140,23 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
       return {
         ...sec,
         items: sec.items.filter((i) => i.id !== itemId),
+      };
+    });
+
+    onChange({
+      ...quotation,
+      sections,
+    });
+  };
+
+  const handleUpdateItemQuantity = (sectionId: string, itemId: string, newQty: number) => {
+    const sections = quotation.sections.map((sec) => {
+      if (sec.id !== sectionId) return sec;
+      return {
+        ...sec,
+        items: sec.items.map((i) =>
+          i.id === itemId ? { ...i, quantity: newQty } : i
+        ),
       };
     });
 
@@ -439,14 +457,12 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
                 />
                 {quotation.customer.validityType === 'custom' && (
                   <div className="flex items-center gap-1.5 pt-1">
-                    <input
-                      type="number"
-                      min="1"
+                    <DirectNumberInput
+                      min={1}
+                      allowZero={false}
                       value={quotation.customer.validityCustomDays || 15}
-                      onChange={(e) =>
-                        updateCustomer('validityCustomDays', parseInt(e.target.value) || 1)
-                      }
-                      className="w-20 px-2 py-1 border border-slate-300 rounded text-xs bg-white"
+                      onChange={(val) => updateCustomer('validityCustomDays', val || 1)}
+                      className="w-20 px-2 py-1 border border-slate-300 rounded text-xs bg-white text-center font-bold font-mono"
                     />
                     <span className="text-slate-500">วัน</span>
                   </div>
@@ -632,8 +648,34 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
                                 <span>{formattedName}</span>
                               </div>
                             </td>
-                            <td className="py-2.5 px-2 text-center font-mono font-semibold text-slate-700">
-                              {item.quantity}
+                            <td className="py-2.5 px-2 text-center">
+                              <div className="inline-flex items-center rounded-lg border border-slate-300 bg-white shadow-2xs hover:border-indigo-400 focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateItemQuantity(section.id, item.id, Math.max(1, (item.quantity || 1) - 1))}
+                                  disabled={(item.quantity || 1) <= 1}
+                                  className="w-6 h-7 flex items-center justify-center text-slate-400 hover:text-indigo-600 disabled:opacity-25 disabled:cursor-not-allowed text-sm font-bold select-none cursor-pointer"
+                                  title="ลดจำนวน 1 หน่วย"
+                                >
+                                  -
+                                </button>
+                                <DirectNumberInput
+                                  value={item.quantity}
+                                  min={1}
+                                  allowZero={false}
+                                  onChange={(newQty) => handleUpdateItemQuantity(section.id, item.id, newQty)}
+                                  className="w-12 h-7 px-0.5 text-center font-mono font-bold text-slate-800 bg-transparent border-0 focus:outline-none focus:ring-0 text-sm"
+                                  title="คลิกเพื่อระบุจำนวนได้โดยตรง สามารถลบเลขแล้วพิมพ์ใหม่ได้ทันที"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateItemQuantity(section.id, item.id, (item.quantity || 1) + 1)}
+                                  className="w-6 h-7 flex items-center justify-center text-slate-400 hover:text-indigo-600 text-sm font-bold select-none cursor-pointer"
+                                  title="เพิ่มจำนวน 1 หน่วย"
+                                >
+                                  +
+                                </button>
+                              </div>
                             </td>
                             <td className="py-2.5 px-2 text-center text-slate-500">{item.unit}</td>
                             <td className="py-2.5 px-3 text-right font-mono text-slate-700">
@@ -732,21 +774,22 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
             <div className="flex items-center gap-3">
               <label className="text-xs font-semibold text-slate-700">ระบุส่วนลด Ontop (%):</label>
               <div className="relative w-32">
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.5"
+                <DirectNumberInput
+                  min={0}
+                  max={100}
+                  step={0.5}
+                  allowZero={true}
                   value={quotation.ontopDiscountPercent || 0}
-                  onChange={(e) =>
+                  onChange={(val) =>
                     onChange({
                       ...quotation,
-                      ontopDiscountPercent: parseFloat(e.target.value) || 0,
+                      ontopDiscountPercent: val,
                     })
                   }
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-slate-800 text-sm font-bold text-indigo-700"
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-slate-800 text-sm font-bold text-indigo-700 font-mono"
+                  placeholder="0"
                 />
-                <span className="absolute right-3 top-2 text-xs text-slate-400">%</span>
+                <span className="absolute right-3 top-2 text-xs text-slate-400 pointer-events-none">%</span>
               </div>
               <span className="text-xs font-semibold text-slate-600">
                 = ลดเพิ่ม {calc.ontopDiscountAmount.toLocaleString()} ฿
@@ -841,20 +884,21 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
                           placeholder="ประเภทส่วนลด"
                         />
                       </div>
-                      <input
-                        type="number"
-                        min="0"
+                      <DirectNumberInput
+                        min={0}
+                        allowZero={true}
                         value={quotation.additionalDiscount.value ?? 0}
-                        onChange={(e) =>
+                        onChange={(val) =>
                           onChange({
                             ...quotation,
                             additionalDiscount: {
                               ...quotation.additionalDiscount,
-                              value: parseFloat(e.target.value) || 0,
+                              value: val,
                             },
                           })
                         }
-                        className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-slate-800 font-bold"
+                        className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-slate-800 font-bold font-mono"
+                        placeholder="0"
                       />
                     </div>
                   </div>
