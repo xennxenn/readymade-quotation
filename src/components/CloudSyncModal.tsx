@@ -183,6 +183,22 @@ VITE_FIREBASE_APP_ID=${appId || 'YOUR_APP_ID'}`;
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Firestore Database ID
+                </label>
+                <input
+                  type="text"
+                  value={databaseId}
+                  onChange={(e) => setDatabaseId(e.target.value)}
+                  placeholder="ai-studio-pasayaquotation-..."
+                  className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                />
+                <span className="text-[10px] text-slate-400">
+                  ระบุ ID ฐานข้อมูล Firestore เดียวกันเพื่อให้ทุกอุปกรณ์เชื่อมต่อ Database เดียวกัน
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   App ID *
                 </label>
                 <input
@@ -208,16 +224,16 @@ VITE_FIREBASE_APP_ID=${appId || 'YOUR_APP_ID'}`;
               </div>
             </div>
 
-            {/* Vercel instructions */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs space-y-2">
+            {/* Embedded Config Note */}
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-xs space-y-2">
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-slate-700 flex items-center gap-1.5">
-                  <Zap className="w-3.5 h-3.5 text-indigo-600" /> Environment Variables สำหรับ Vercel
+                <span className="font-semibold text-emerald-800 flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 text-emerald-600" /> ฝังการเชื่อมต่อในโค้ดแล้ว (Built-in Config)
                 </span>
                 <button
                   type="button"
                   onClick={copyVercelEnvExample}
-                  className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 bg-white border border-slate-300 rounded-md hover:bg-slate-50 text-slate-700 font-medium transition-colors"
+                  className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 bg-white border border-emerald-300 rounded-md hover:bg-emerald-50 text-emerald-800 font-medium transition-colors"
                 >
                   {isCopied ? (
                     <>
@@ -225,13 +241,13 @@ VITE_FIREBASE_APP_ID=${appId || 'YOUR_APP_ID'}`;
                     </>
                   ) : (
                     <>
-                      <Copy className="w-3 h-3" /> คัดลอกค่า Env
+                      <Copy className="w-3 h-3" /> สำเนาค่า Config
                     </>
                   )}
                 </button>
               </div>
-              <p className="text-slate-500">
-                เมื่อ Deploy บน Vercel ให้นำค่าเหล่านี้ไปใส่ในแท็บ <strong>Settings &gt; Environment Variables</strong> ของ Vercel เพื่อให้เว็บออนไลน์เชื่อมโยงข้อมูลอัตโนมัติ
+              <p className="text-emerald-700 leading-relaxed">
+                การตั้งค่า Firebase ทั้งหมดถูกฝังไว้ในตัวแอปพลิเคชันโดยตรงแล้ว เมื่อนำโค้ดไป Deploy บน Vercel หรือเซิร์ฟเวอร์ใดก็ตาม <strong>ระบบจะเชื่อมต่อ Cloud Firestore ให้โดยอัตโนมัติทันที โดยไม่จำเป็นต้องกรอกค่าใน Environment Variables ของ Vercel อีก</strong>
               </p>
             </div>
 

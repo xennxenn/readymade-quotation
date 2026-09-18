@@ -1,0 +1,103 @@
+{
+  "entities": {
+    "Quotation": {
+      "title": "Quotation",
+      "description": "Quotation documents created by sales or admin",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "quotationNumber": { "type": "string" },
+        "date": { "type": "string" },
+        "customer": { "type": "object" },
+        "items": { "type": "array" },
+        "totalAmount": { "type": "number" },
+        "grandTotal": { "type": "number" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "quotationNumber", "items", "createdAt"]
+    },
+    "StaffMember": {
+      "title": "StaffMember",
+      "description": "Staff and admin user accounts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "role": { "type": "string" },
+        "password": { "type": "string" },
+        "phone": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "name", "employeeId", "role", "password"]
+    },
+    "PromotionGroup": {
+      "title": "PromotionGroup",
+      "description": "Discount promotion rules",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "collection": { "type": "string" },
+        "applyToAllColors": { "type": "boolean" },
+        "selectedColors": { "type": "array" },
+        "discountPercent": { "type": "number" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "name", "collection", "discountPercent"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Bedding products catalog",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "barcode": { "type": "string" },
+        "collection": { "type": "string" },
+        "description": { "type": "string" },
+        "size": { "type": "string" },
+        "color": { "type": "string" },
+        "price": { "type": "number" }
+      },
+      "required": ["id", "barcode", "collection", "description", "price"]
+    },
+    "CompanySettings": {
+      "title": "CompanySettings",
+      "description": "Company profile and quotation header settings",
+      "type": "object",
+      "properties": {
+        "companyName": { "type": "string" },
+        "branchName": { "type": "string" },
+        "address": { "type": "string" },
+        "taxId": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "logoUrl": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "quotations": {
+      "schema": "Quotation",
+      "description": "Collection of quotations"
+    },
+    "staff": {
+      "schema": "StaffMember",
+      "description": "Collection of staff accounts"
+    },
+    "promotionGroups": {
+      "schema": "PromotionGroup",
+      "description": "Collection of discount promotion campaigns"
+    },
+    "products": {
+      "schema": "Product",
+      "description": "Collection of bedding products"
+    },
+    "settings": {
+      "schema": "CompanySettings",
+      "description": "Company configuration and branding"
+    }
+  }
+}

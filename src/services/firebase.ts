@@ -5,12 +5,19 @@ import {
   doc,
   setDoc,
   deleteDoc,
+  getDocs,
+  getDoc,
+  writeBatch,
   onSnapshot,
   Firestore,
   Unsubscribe,
+  query,
+  where,
 } from 'firebase/firestore';
-import { Quotation, StaffMember, CompanySettings, PromotionGroup } from '../types';
+import { Quotation, StaffMember, CompanySettings, PromotionGroup, Product } from '../types';
 import firebaseAppletConfig from '../../firebase-applet-config.json';
+import { INITIAL_PRODUCTS, INITIAL_PROMOTION_GROUPS, DEFAULT_COMPANY_SETTINGS } from '../data/initialData';
+import { DEFAULT_FIREBASE_CONFIG } from '../config/firebaseConfig';
 
 export interface FirebaseConfig {
   apiKey: string;
@@ -23,18 +30,30 @@ export interface FirebaseConfig {
 }
 
 const FIREBASE_CONFIG_KEY = 'pasaya_firebase_config';
+export const TARGET_DATABASE_ID =
+  DEFAULT_FIREBASE_CONFIG.databaseId ||
+  firebaseAppletConfig?.firestoreDatabaseId ||
+  'ai-studio-pasayaquotation-113564df-7be0-41e4-8484-e1da116527e6';
 
 export function getSavedFirebaseConfig(): FirebaseConfig | null {
+  // 1. Check saved custom config in localStorage
   try {
     const raw = localStorage.getItem(FIREBASE_CONFIG_KEY);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (parsed.apiKey && parsed.projectId) {
+        // Auto-fix databaseId to ensure it matches the actual project database
+        if (!parsed.databaseId || parsed.databaseId === '(default)') {
+          parsed.databaseId = TARGET_DATABASE_ID;
+        }
+        return parsed;
+      }
     }
   } catch (e) {
     console.error('Failed to parse saved Firebase config', e);
   }
 
-  // 1. Check Vite Environment Variables (e.g. from .env or Vercel dashboard)
+  // 2. Check Vite Environment Variables (optional override if provided)
   const envApiKey = import.meta.env.VITE_FIREBASE_API_KEY;
   const envProjectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
   const envAppId = import.meta.env.VITE_FIREBASE_APP_ID;
@@ -45,31 +64,35 @@ export function getSavedFirebaseConfig(): FirebaseConfig | null {
       apiKey: envApiKey,
       authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || `${envProjectId}.firebaseapp.com`,
       projectId: envProjectId,
-      databaseId: envDbId || undefined,
+      databaseId: envDbId || TARGET_DATABASE_ID,
       storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || `${envProjectId}.firebasestorage.app`,
       messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
       appId: envAppId,
     };
   }
 
-  // 2. Automatic Fallback to provisioned firebase-applet-config.json
+  // 3. Fallback to firebase-applet-config.json if available
   if (firebaseAppletConfig && firebaseAppletConfig.apiKey && firebaseAppletConfig.projectId) {
     return {
       apiKey: firebaseAppletConfig.apiKey,
       authDomain: firebaseAppletConfig.authDomain || `${firebaseAppletConfig.projectId}.firebaseapp.com`,
       projectId: firebaseAppletConfig.projectId,
-      databaseId: firebaseAppletConfig.firestoreDatabaseId || undefined,
+      databaseId: TARGET_DATABASE_ID,
       storageBucket: firebaseAppletConfig.storageBucket || `${firebaseAppletConfig.projectId}.firebasestorage.app`,
       messagingSenderId: firebaseAppletConfig.messagingSenderId || '',
       appId: firebaseAppletConfig.appId,
     };
   }
 
-  return null;
+  // 4. Default embedded config: Zero configuration required on Vercel / GitHub
+  return DEFAULT_FIREBASE_CONFIG;
 }
 
 export function saveFirebaseConfig(config: FirebaseConfig | null): void {
   if (config) {
+    if (!config.databaseId || config.databaseId === '(default)') {
+      config.databaseId = TARGET_DATABASE_ID;
+    }
     localStorage.setItem(FIREBASE_CONFIG_KEY, JSON.stringify(config));
   } else {
     localStorage.removeItem(FIREBASE_CONFIG_KEY);
@@ -94,7 +117,7 @@ export function getCloudFirestore(): Firestore | null {
       firebaseApp = getApps()[0];
     }
 
-    const dbId = config.databaseId;
+    const dbId = config.databaseId || TARGET_DATABASE_ID;
     if (dbId && dbId !== '(default)') {
       firestoreDb = getFirestore(firebaseApp, dbId);
     } else {
@@ -201,6 +224,131 @@ export function subscribeToCloudCompanySettings(
   }
 }
 
+/**
+ * Realtime subscription to Promotion Groups
+ */
+export function subscribeToCloudPromotionGroups(
+  onUpdate: (promos: PromotionGroup[]) => void
+): Unsubscribe | null {
+  const db = getCloudFirestore();
+  if (!db) return null;
+
+  try {
+    const promoCol = collection(db, 'promotionGroups');
+    return onSnapshot(promoCol, (snapshot) => {
+      const list: PromotionGroup[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push(docSnap.data() as PromotionGroup);
+      });
+      onUpdate(list);
+    });
+  } catch (e) {
+    console.error('Failed to subscribe to promotion groups', e);
+    return null;
+  }
+}
+
+// ---------------- CLOUD FETCH DIRECT QUERIES ----------------
+
+export async function fetchCloudStaff(): Promise<StaffMember[] | null> {
+  const db = getCloudFirestore();
+  if (!db) return null;
+  try {
+    const snap = await getDocs(collection(db, 'staff'));
+    const list: StaffMember[] = [];
+    snap.forEach((d) => list.push(d.data() as StaffMember));
+    return list;
+  } catch (err) {
+    console.error('Error fetching cloud staff:', err);
+    return null;
+  }
+}
+
+export async function fetchCloudStaffByEmployeeId(empId: string): Promise<StaffMember | null> {
+  const db = getCloudFirestore();
+  if (!db || !empId) return null;
+  try {
+    const trimmed = empId.trim().toUpperCase();
+    const staffCol = collection(db, 'staff');
+    const q = query(staffCol, where('employeeId', '==', trimmed));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      return snap.docs[0].data() as StaffMember;
+    }
+    // Fallback search through all docs in case casing or formatting differs
+    const all = await getDocs(staffCol);
+    for (const d of all.docs) {
+      const data = d.data() as StaffMember;
+      if ((data.employeeId || '').trim().toUpperCase() === trimmed) {
+        return data;
+      }
+    }
+    return null;
+  } catch (err) {
+    console.error('Error querying cloud staff by employeeId:', err);
+    return null;
+  }
+}
+
+export async function fetchCloudQuotations(): Promise<Quotation[] | null> {
+  const db = getCloudFirestore();
+  if (!db) return null;
+  try {
+    const snap = await getDocs(collection(db, 'quotations'));
+    const list: Quotation[] = [];
+    snap.forEach((d) => list.push(d.data() as Quotation));
+    list.sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+    return list;
+  } catch (err) {
+    console.error('Error fetching cloud quotations:', err);
+    return null;
+  }
+}
+
+export async function fetchCloudPromotionGroups(): Promise<PromotionGroup[] | null> {
+  const db = getCloudFirestore();
+  if (!db) return null;
+  try {
+    const snap = await getDocs(collection(db, 'promotionGroups'));
+    const list: PromotionGroup[] = [];
+    snap.forEach((d) => list.push(d.data() as PromotionGroup));
+    return list;
+  } catch (err) {
+    console.error('Error fetching cloud promotion groups:', err);
+    return null;
+  }
+}
+
+export async function fetchCloudCompanySettings(): Promise<CompanySettings | null> {
+  const db = getCloudFirestore();
+  if (!db) return null;
+  try {
+    const snap = await getDoc(doc(db, 'settings', 'company'));
+    if (snap.exists()) {
+      return snap.data() as CompanySettings;
+    }
+    return null;
+  } catch (err) {
+    console.error('Error fetching cloud company settings:', err);
+    return null;
+  }
+}
+
+export async function fetchCloudProducts(): Promise<Product[] | null> {
+  const db = getCloudFirestore();
+  if (!db) return null;
+  try {
+    const snap = await getDocs(collection(db, 'products'));
+    if (snap.empty) return null;
+    const list: Product[] = [];
+    snap.forEach((d) => list.push(d.data() as Product));
+    return list;
+  } catch (err) {
+    console.error('Error fetching cloud products:', err);
+    return null;
+  }
+}
+
 // ---------------- CLOUD MUTATIONS ----------------
 
 export async function uploadQuotationToCloud(quote: Quotation): Promise<boolean> {
@@ -240,7 +388,7 @@ export async function uploadStaffToCloud(staff: StaffMember): Promise<boolean> {
 
   try {
     const staffRef = doc(db, 'staff', staff.id);
-    await setDoc(staffRef, staff);
+    await setDoc(staffRef, staff, { merge: true });
     return true;
   } catch (err) {
     console.error('Error writing staff to Firestore:', err);
@@ -262,16 +410,167 @@ export async function deleteStaffFromCloud(id: string): Promise<boolean> {
   }
 }
 
+export async function uploadPromotionGroupToCloud(group: PromotionGroup): Promise<boolean> {
+  const db = getCloudFirestore();
+  if (!db) return false;
+
+  try {
+    const groupRef = doc(db, 'promotionGroups', group.id);
+    await setDoc(groupRef, group, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('Error writing promotion group to Firestore:', err);
+    return false;
+  }
+}
+
+export async function deletePromotionGroupFromCloud(id: string): Promise<boolean> {
+  const db = getCloudFirestore();
+  if (!db) return false;
+
+  try {
+    const groupRef = doc(db, 'promotionGroups', id);
+    await deleteDoc(groupRef);
+    return true;
+  } catch (err) {
+    console.error('Error deleting promotion group from Firestore:', err);
+    return false;
+  }
+}
+
 export async function uploadCompanySettingsToCloud(settings: CompanySettings): Promise<boolean> {
   const db = getCloudFirestore();
   if (!db) return false;
 
   try {
     const settingsRef = doc(db, 'settings', 'company');
-    await setDoc(settingsRef, settings);
+    await setDoc(settingsRef, settings, { merge: true });
     return true;
   } catch (err) {
     console.error('Error writing company settings to Firestore:', err);
     return false;
   }
+}
+
+export async function uploadProductToCloud(product: Product): Promise<boolean> {
+  const db = getCloudFirestore();
+  if (!db) return false;
+
+  try {
+    const prodRef = doc(db, 'products', product.id);
+    await setDoc(prodRef, product, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('Error writing product to Firestore:', err);
+    return false;
+  }
+}
+
+export async function batchUploadProductsToCloud(products: Product[]): Promise<boolean> {
+  const db = getCloudFirestore();
+  if (!db || products.length === 0) return false;
+
+  try {
+    // Firestore batch supports up to 500 writes
+    const CHUNK_SIZE = 450;
+    for (let i = 0; i < products.length; i += CHUNK_SIZE) {
+      const chunk = products.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      for (const p of chunk) {
+        const pRef = doc(db, 'products', p.id);
+        batch.set(pRef, p, { merge: true });
+      }
+      await batch.commit();
+    }
+    return true;
+  } catch (err) {
+    console.error('Error batch uploading products to Firestore:', err);
+    return false;
+  }
+}
+
+export async function deleteProductFromCloud(id: string): Promise<boolean> {
+  const db = getCloudFirestore();
+  if (!db) return false;
+
+  try {
+    const prodRef = doc(db, 'products', id);
+    await deleteDoc(prodRef);
+    return true;
+  } catch (err) {
+    console.error('Error deleting product from Firestore:', err);
+    return false;
+  }
+}
+
+// ---------------- AUTOMATIC CLOUD SEEDER ----------------
+
+/**
+ * Initializes default shared data on Cloud Firestore if collections are empty.
+ * This guarantees that any deployed version (Vercel, Cloud Run, new browser)
+ * connects to the EXACT same database with all required default records.
+ */
+export async function initializeCloudDatabaseSeed(): Promise<{
+  seededStaff: boolean;
+  seededPromos: boolean;
+  seededSettings: boolean;
+  seededProducts: boolean;
+}> {
+  const db = getCloudFirestore();
+  const result = {
+    seededStaff: false,
+    seededPromos: false,
+    seededSettings: false,
+    seededProducts: false,
+  };
+
+  if (!db) return result;
+
+  try {
+    // 1. Ensure Admin Account (T58121) exists in Firestore
+    const adminRef = doc(db, 'staff', 'st-admin-t58121');
+    const adminSnap = await getDoc(adminRef);
+    if (!adminSnap.exists()) {
+      await setDoc(adminRef, {
+        id: 'st-admin-t58121',
+        name: 'ผู้ดูแลระบบ (Admin)',
+        employeeId: 'T58121',
+        password: 'Admin',
+        role: 'admin',
+        phone: '02-440-0955',
+        createdAt: Date.now(),
+      });
+      result.seededStaff = true;
+    }
+
+    // 2. Check Promotion Groups in Firestore
+    const promoSnap = await getDocs(collection(db, 'promotionGroups'));
+    if (promoSnap.empty) {
+      const batch = writeBatch(db);
+      for (const pg of INITIAL_PROMOTION_GROUPS) {
+        batch.set(doc(db, 'promotionGroups', pg.id), pg);
+      }
+      await batch.commit();
+      result.seededPromos = true;
+    }
+
+    // 3. Check Company Settings in Firestore
+    const settingsDoc = doc(db, 'settings', 'company');
+    const settingsSnap = await getDoc(settingsDoc);
+    if (!settingsSnap.exists()) {
+      await setDoc(settingsDoc, DEFAULT_COMPANY_SETTINGS);
+      result.seededSettings = true;
+    }
+
+    // 4. Check Products in Firestore
+    const prodSnap = await getDocs(collection(db, 'products'));
+    if (prodSnap.empty) {
+      await batchUploadProductsToCloud(INITIAL_PRODUCTS);
+      result.seededProducts = true;
+    }
+  } catch (err) {
+    console.error('Error during cloud database initialization:', err);
+  }
+
+  return result;
 }

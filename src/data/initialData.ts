@@ -1,4 +1,4 @@
-import { Product, StaffMember, PromotionGroup, Quotation } from '../types';
+import { Product, StaffMember, PromotionGroup, Quotation, CompanySettings } from '../types';
 
 export const INITIAL_STAFF: StaffMember[] = [
   { id: 'st-admin-t58121', name: 'ผู้ดูแลระบบ (Admin)', employeeId: 'T58121', password: 'Admin', role: 'admin', phone: '02-440-0955' },
@@ -470,3 +470,17 @@ export const INITIAL_SAMPLE_QUOTATION: Quotation = {
   createdAt: 1770984000000,
   updatedAt: 1770984000000,
 };
+
+export const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
+  logoUrl: '/pasaya-logo.svg',
+  companyName: 'บริษัท เท็กซ์ไทล์ แกลลอรี่ จำกัด',
+  branchName: '(สำนักงานใหญ่)',
+  address: '77/191-192 อาคารสินสาธรทาวเวอร์ ชั้น 42 ถนนกรุงธนบุรี แขวงคลองต้นไทร เขตคลองสาน กรุงเทพฯ 10600',
+  taxId: '0105546015615',
+  phone: '0-2440-0955',
+  fax: '0-2440-0933-4',
+  email: 'info@pasaya.com',
+  website: 'www.pasaya.com',
+  logoHeight: 96,
+};
+

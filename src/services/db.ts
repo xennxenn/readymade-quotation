@@ -7,6 +7,12 @@ import {
   uploadStaffToCloud,
   deleteStaffFromCloud,
   uploadCompanySettingsToCloud,
+  uploadPromotionGroupToCloud,
+  deletePromotionGroupFromCloud,
+  uploadProductToCloud,
+  batchUploadProductsToCloud,
+  deleteProductFromCloud,
+  fetchCloudStaffByEmployeeId,
 } from './firebase';
 
 const DB_NAME = 'BeddingQuotationDB';
@@ -390,6 +396,13 @@ export async function batchInsertProducts(
     });
   }
 
+  // Upload to Cloud Firestore as well so all deployed instances share the exact same products
+  if (isCloudSyncEnabled()) {
+    batchUploadProductsToCloud(products).catch((err) => {
+      console.warn('Could not batch upload products to cloud:', err);
+    });
+  }
+
   return inserted;
 }
 
@@ -407,22 +420,34 @@ export async function getPromotionGroups(): Promise<PromotionGroup[]> {
 
 export async function savePromotionGroup(group: PromotionGroup): Promise<void> {
   const db = await getDB();
-  return new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const tx = db.transaction('promotionGroups', 'readwrite');
     const req = tx.objectStore('promotionGroups').put(group);
     req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
   });
+
+  if (isCloudSyncEnabled()) {
+    uploadPromotionGroupToCloud(group).catch((err) => {
+      console.warn('Could not sync promotion group to cloud:', err);
+    });
+  }
 }
 
 export async function deletePromotionGroup(id: string): Promise<void> {
   const db = await getDB();
-  return new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const tx = db.transaction('promotionGroups', 'readwrite');
     const req = tx.objectStore('promotionGroups').delete(id);
     req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
   });
+
+  if (isCloudSyncEnabled()) {
+    deletePromotionGroupFromCloud(id).catch((err) => {
+      console.warn('Could not delete promotion group from cloud:', err);
+    });
+  }
 }
 
 export function findApplicableDiscount(
@@ -562,22 +587,46 @@ export async function ensureAdminAccount(): Promise<void> {
 
 export async function authenticateStaff(username: string, password: string): Promise<StaffMember | null> {
   if (!username || !password) return null;
-  await ensureAdminAccount();
-
-  const staffList = await getStaffList();
   const trimmedUser = (username || '').trim().toUpperCase();
+  const trimmedPass = (password || '').trim();
 
-  // Look up staff by Employee ID (Username) safely
-  const member = staffList.find(
+  // 1. Check local IndexedDB staff list
+  const staffList = await getStaffList();
+  let member = staffList.find(
     (s) => (s?.employeeId || '').trim().toUpperCase() === trimmedUser
   );
+
+  // 2. If not found locally and cloud sync is available, query Firestore directly!
+  // This guarantees that any real staff in Firestore (e.g. T62023, T46160) can log in on ANY device immediately!
+  if (!member && isCloudSyncEnabled()) {
+    try {
+      const cloudMember = await fetchCloudStaffByEmployeeId(trimmedUser);
+      if (cloudMember) {
+        member = cloudMember;
+        // Cache to local IndexedDB
+        await addStaffMember(cloudMember);
+      }
+    } catch (err) {
+      console.warn('Cloud staff lookup fallback error:', err);
+    }
+  }
+
+  // 3. If still not found and username is T58121, check default admin
+  if (!member && trimmedUser === 'T58121') {
+    await ensureAdminAccount();
+    const refreshed = await getStaffList();
+    member = refreshed.find(
+      (s) => (s?.employeeId || '').trim().toUpperCase() === 'T58121'
+    );
+  }
+
   if (!member) {
     return null;
   }
 
   // Check password strictly
-  const staffPass = member.password || '';
-  if (staffPass === password.trim()) {
+  const staffPass = (member.password || '').trim();
+  if (staffPass === trimmedPass) {
     return member;
   }
 
@@ -684,3 +733,62 @@ export async function resetCompanySettings(): Promise<CompanySettings> {
   }
   return DEFAULT_COMPANY_SETTINGS;
 }
+
+// ---------------- Bi-directional Cloud Cache Sync Helpers ----------------
+
+export async function syncStaffListToIndexedDB(staffList: StaffMember[]): Promise<void> {
+  if (!staffList || staffList.length === 0) return;
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('staff', 'readwrite');
+    const store = tx.objectStore('staff');
+    for (const s of staffList) {
+      store.put(s);
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function syncQuotationsToIndexedDB(quoteList: Quotation[]): Promise<void> {
+  if (!quoteList || quoteList.length === 0) return;
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('quotations', 'readwrite');
+    const store = tx.objectStore('quotations');
+    for (const q of quoteList) {
+      store.put(q);
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function syncPromotionsToIndexedDB(promoList: PromotionGroup[]): Promise<void> {
+  if (!promoList || promoList.length === 0) return;
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('promotionGroups', 'readwrite');
+    const store = tx.objectStore('promotionGroups');
+    for (const pg of promoList) {
+      store.put(pg);
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function syncProductsToIndexedDB(productList: Product[]): Promise<void> {
+  if (!productList || productList.length === 0) return;
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('products', 'readwrite');
+    const store = tx.objectStore('products');
+    for (const p of productList) {
+      store.put(p);
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+

@@ -30,12 +30,19 @@ import {
   getCompanySettings,
   DEFAULT_COMPANY_SETTINGS,
   ensureAdminAccount,
+  syncStaffListToIndexedDB,
+  syncQuotationsToIndexedDB,
+  syncPromotionsToIndexedDB,
+  syncProductsToIndexedDB,
 } from './services/db';
 import {
   isCloudSyncEnabled,
   subscribeToCloudQuotations,
   subscribeToCloudStaff,
   subscribeToCloudCompanySettings,
+  subscribeToCloudPromotionGroups,
+  initializeCloudDatabaseSeed,
+  fetchCloudProducts,
 } from './services/firebase';
 import { QuotationEditor } from './components/QuotationEditor';
 import { QuotationPreview } from './components/QuotationPreview';
@@ -106,15 +113,15 @@ export default function App() {
 
     // Realtime Quotations
     const unsubQuotes = subscribeToCloudQuotations((cloudQuotes) => {
-      if (cloudQuotes && cloudQuotes.length > 0) {
-        setSavedQuotations(cloudQuotes);
-      }
+      setSavedQuotations(cloudQuotes);
+      syncQuotationsToIndexedDB(cloudQuotes);
     });
 
     // Realtime Staff
     const unsubStaff = subscribeToCloudStaff((cloudStaff) => {
       if (cloudStaff && cloudStaff.length > 0) {
         setStaffList(cloudStaff);
+        syncStaffListToIndexedDB(cloudStaff);
       }
     });
 
@@ -122,6 +129,19 @@ export default function App() {
     const unsubSettings = subscribeToCloudCompanySettings((cloudSettings) => {
       if (cloudSettings) {
         setCompanySettings(cloudSettings);
+        try {
+          localStorage.setItem('bedding_quotation_company_settings', JSON.stringify(cloudSettings));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    });
+
+    // Realtime Promotion Groups
+    const unsubPromos = subscribeToCloudPromotionGroups((cloudPromos) => {
+      if (cloudPromos && cloudPromos.length > 0) {
+        setPromotionGroups(cloudPromos);
+        syncPromotionsToIndexedDB(cloudPromos);
       }
     });
 
@@ -129,11 +149,29 @@ export default function App() {
       if (unsubQuotes) unsubQuotes();
       if (unsubStaff) unsubStaff();
       if (unsubSettings) unsubSettings();
+      if (unsubPromos) unsubPromos();
     };
   }, [isCloudActive]);
 
   const loadAppInitialData = async () => {
     try {
+      if (isCloudSyncEnabled()) {
+        setIsCloudActive(true);
+        // Ensure shared cloud database has admin, promotions, settings, products
+        await initializeCloudDatabaseSeed();
+
+        // If local product count is low or empty, sync from cloud products
+        const localProductCount = await getProductCount();
+        if (localProductCount === 0) {
+          const cloudProds = await fetchCloudProducts();
+          if (cloudProds && cloudProds.length > 0) {
+            await syncProductsToIndexedDB(cloudProds);
+          }
+        }
+      }
+
+      await ensureAdminAccount();
+
       const staff = await getStaffList();
       setStaffList(staff);
       const promos = await getPromotionGroups();
