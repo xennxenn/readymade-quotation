@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Plus,
   Trash2,
@@ -15,6 +15,7 @@ import {
   Check,
   Layers,
   ChevronRight,
+  Lock,
 } from 'lucide-react';
 import {
   Quotation,
@@ -36,6 +37,7 @@ interface QuotationEditorProps {
   onChange: (updated: Quotation) => void;
   staffList: StaffMember[];
   promotionGroups: PromotionGroup[];
+  currentUser?: StaffMember | null;
 }
 
 export const QuotationEditor: React.FC<QuotationEditorProps> = ({
@@ -43,6 +45,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
   onChange,
   staffList,
   promotionGroups,
+  currentUser,
 }) => {
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
@@ -50,6 +53,22 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
     sectionId: string;
     item: QuoteItem;
   } | null>(null);
+
+  // Check if logged-in user is a sales staff (ล็อคให้พนักงานขายเลือกพนักงานได้แค่ตัวเองเท่านั้น)
+  const isSalesStaffLocked = currentUser?.role === 'staff' && Boolean(currentUser?.name);
+
+  // Automatically enforce salesName to currentUser's name if logged in as staff
+  useEffect(() => {
+    if (isSalesStaffLocked && currentUser?.name && quotation.customer.salesName !== currentUser.name) {
+      onChange({
+        ...quotation,
+        customer: {
+          ...quotation.customer,
+          salesName: currentUser.name,
+        },
+      });
+    }
+  }, [isSalesStaffLocked, currentUser?.name, quotation.customer.salesName]);
 
   const calc = calculateQuotation(quotation);
 
@@ -265,8 +284,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
     });
   };
 
-  // ผู้ตรวจสอบ / Inspector คือ ผู้ตรวจสอบคือ ผู้ดูแล/Admin ดึงรายชื่อมาแสดง ไม่ใช่ผู้จัดการ
-  const adminStaff = staffList.filter((s) => s.role === 'admin');
+  // ผู้ตรวจสอบ / Inspector (ผู้ดูแล/Admin) ดึงรายชื่อพนักงานทั้งหมด
   const salesStaff = staffList.filter((s) => s.role === 'staff' || s.role === 'manager' || s.role === 'admin');
 
   const validityOptions: SearchableOption[] = [
@@ -286,23 +304,32 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
 
   const adminStaffOptions: SearchableOption[] = [
     { value: '', label: '-- เลือกผู้ตรวจสอบ (ผู้ดูแล/Admin) --' },
-    ...adminStaff.map((s) => ({
+    ...staffList.map((s) => ({
       value: s.name,
       label: s.employeeId ? `[${s.employeeId}] ${s.name}` : s.name,
       sublabel: `โทร: ${s.phone || '-'}`,
-      badge: 'ผู้ดูแล/Admin',
+      badge: s.role === 'admin' ? 'ผู้ดูแล/Admin' : s.role === 'manager' ? 'ผู้จัดการ' : 'พนักงาน',
     })),
   ];
 
-  const salesStaffOptions: SearchableOption[] = [
-    { value: '', label: '-- เลือกพนักงานขาย --' },
-    ...salesStaff.map((s) => ({
-      value: s.name,
-      label: s.employeeId ? `[${s.employeeId}] ${s.name}` : s.name,
-      sublabel: `โทร: ${s.phone || '-'}`,
-      badge: s.role === 'manager' ? 'ผู้จัดการ' : s.role === 'admin' ? 'แอดมิน' : 'พนักงาน',
-    })),
-  ];
+  const salesStaffOptions: SearchableOption[] = isSalesStaffLocked && currentUser
+    ? [
+        {
+          value: currentUser.name,
+          label: currentUser.employeeId ? `[${currentUser.employeeId}] ${currentUser.name}` : currentUser.name,
+          sublabel: `โทร: ${currentUser.phone || '-'}`,
+          badge: 'บัญชีของคุณ (พนักงานขาย)',
+        },
+      ]
+    : [
+        { value: '', label: '-- เลือกพนักงานขาย --' },
+        ...salesStaff.map((s) => ({
+          value: s.name,
+          label: s.employeeId ? `[${s.employeeId}] ${s.name}` : s.name,
+          sublabel: `โทร: ${s.phone || '-'}`,
+          badge: s.role === 'manager' ? 'ผู้จัดการ' : s.role === 'admin' ? 'แอดมิน' : 'พนักงาน',
+        })),
+      ];
 
   const discountApplyFromOptions: SearchableOption[] = [
     { value: 'after_discount', label: 'ลดจากยอดหลังหักส่วนลดสินค้า' },
@@ -532,23 +559,42 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
                   });
                 }}
                 placeholder="-- เลือกผู้ตรวจสอบ (ผู้ดูแล/Admin) --"
-                searchPlaceholder="ค้นหาชื่อหรือรหัสผู้ดูแล/Admin..."
+                searchPlaceholder="ค้นหาชื่อหรือรหัสพนักงาน..."
               />
             </div>
 
             {/* พนักงานขาย (Sales) */}
             <div>
-              <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                <Briefcase className="w-3.5 h-3.5 text-slate-400" />
-                พนักงานขาย (Sale)
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block font-semibold text-slate-700 flex items-center gap-1">
+                  <Briefcase className="w-3.5 h-3.5 text-slate-400" />
+                  พนักงานขาย (Sale)
+                </label>
+                {isSalesStaffLocked && (
+                  <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-sm flex items-center gap-1 font-medium">
+                    <Lock className="w-3 h-3 text-amber-600" />
+                    ล็อคเฉพาะตัวเอง
+                  </span>
+                )}
+              </div>
               <SearchableSelect
                 options={salesStaffOptions}
-                value={quotation.customer.salesName}
-                onChange={(val) => updateCustomer('salesName', val)}
+                value={isSalesStaffLocked && currentUser ? currentUser.name : quotation.customer.salesName}
+                onChange={(val) => {
+                  if (!isSalesStaffLocked) {
+                    updateCustomer('salesName', val);
+                  }
+                }}
+                disabled={isSalesStaffLocked}
                 placeholder="-- เลือกพนักงานขาย --"
                 searchPlaceholder="ค้นหาชื่อหรือรหัสพนักงานขาย..."
               />
+              {isSalesStaffLocked && (
+                <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
+                  <Lock className="w-3 h-3 text-slate-400 shrink-0" />
+                  ระบุตามบัญชีพนักงานขายของคุณ (สามารถเลือกผู้ตรวจสอบคนอื่นได้ตามปกติ)
+                </p>
+              )}
             </div>
           </div>
         </div>

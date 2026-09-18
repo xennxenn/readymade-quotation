@@ -630,6 +630,7 @@ export default function App() {
             onChange={setQuotation}
             staffList={staffList}
             promotionGroups={promotionGroups}
+            currentUser={currentUser}
           />
         )}
 
