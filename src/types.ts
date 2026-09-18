@@ -109,14 +109,25 @@ export interface Quotation {
   updatedAt: number;
 }
 
+export interface PromotionCollectionRule {
+  collection: string;
+  applyToAllColors: boolean;  // ทั้ง collection
+  selectedColors: string[];   // หรือเลือกเฉพาะบางสี
+}
+
 export interface PromotionGroup {
   id: string;
   name: string;
-  collection: string;
-  applyToAllColors: boolean;  // ทั้ง collection
-  selectedColors: string[];   // หรือเลือกบางสี
   discountPercent: number;
+  startDate?: string;         // YYYY-MM-DD
+  endDate?: string;           // YYYY-MM-DD
+  collectionRules?: PromotionCollectionRule[]; // Multiple collections with per-collection scope
+  // Backward compatibility fields
+  collection?: string;
+  applyToAllColors?: boolean;
+  selectedColors?: string[];
   createdAt: number;
+  updatedAt?: number;
 }
 
 export type StaffRole = 'staff' | 'admin' | 'manager';
@@ -128,6 +139,7 @@ export interface StaffMember {
   password?: string;
   role: StaffRole;
   phone?: string;
+  signatureUrl?: string;      // Transparent PNG data URL
   createdAt?: number;
 }
 

@@ -464,7 +464,7 @@ export const INITIAL_SAMPLE_QUOTATION: Quotation = {
   depositRatePercent: 0,
   notes: [
     'ผู้สั่งซื้อจะต้องชำระเงินครบทั้งหมด ก่อนดำเนินการสั่งผลิต',
-    'รอสินค้า 30 วันทำการ',
+    'รอสินค้า 2-7 วันทำการ',
   ],
   inspectorName: 'ธวัชชัย มั่งคั่ง',
   createdAt: 1770984000000,

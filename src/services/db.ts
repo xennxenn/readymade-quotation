@@ -13,6 +13,8 @@ import {
   deleteProductFromCloud,
   clearAllProductsFromCloud,
   fetchCloudStaffByEmployeeId,
+  fetchCloudVisibleCollections,
+  uploadVisibleCollectionsToCloud,
 } from './firebase';
 
 const DB_NAME = 'BeddingQuotationDB';
@@ -138,7 +140,51 @@ export async function getProductByBarcode(barcode: string): Promise<Product | nu
   });
 }
 
-export async function getDistinctCollections(): Promise<string[]> {
+const VISIBLE_COLLECTIONS_KEY = 'pasaya_visible_collections';
+
+export async function getVisibleCollections(): Promise<string[] | null> {
+  try {
+    const raw = localStorage.getItem(VISIBLE_COLLECTIONS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('Error reading visible collections from localStorage', e);
+  }
+
+  if (isCloudSyncEnabled()) {
+    try {
+      const cloudList = await fetchCloudVisibleCollections();
+      if (cloudList && Array.isArray(cloudList) && cloudList.length > 0) {
+        localStorage.setItem(VISIBLE_COLLECTIONS_KEY, JSON.stringify(cloudList));
+        return cloudList;
+      }
+    } catch (e) {
+      console.warn('Error fetching visible collections from cloud', e);
+    }
+  }
+
+  return null;
+}
+
+export async function saveVisibleCollections(collections: string[]): Promise<void> {
+  try {
+    localStorage.setItem(VISIBLE_COLLECTIONS_KEY, JSON.stringify(collections));
+  } catch (e) {
+    console.warn('Error writing visible collections to localStorage', e);
+  }
+
+  if (isCloudSyncEnabled()) {
+    uploadVisibleCollectionsToCloud(collections).catch((e) => {
+      console.warn('Error uploading visible collections to cloud', e);
+    });
+  }
+}
+
+export async function getAllDistinctCollections(): Promise<string[]> {
   const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction('products', 'readonly');
@@ -149,8 +195,8 @@ export async function getDistinctCollections(): Promise<string[]> {
     req.onsuccess = (event) => {
       const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
       if (cursor) {
-        if (cursor.value.collection) {
-          collections.add(cursor.value.collection);
+        if (cursor.value.collection && cursor.value.collection.trim()) {
+          collections.add(cursor.value.collection.trim());
         }
         cursor.continue();
       } else {
@@ -159,6 +205,44 @@ export async function getDistinctCollections(): Promise<string[]> {
     };
     req.onerror = () => reject(req.error);
   });
+}
+
+export async function getCollectionProductCounts(): Promise<Record<string, number>> {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('products', 'readonly');
+    const store = tx.objectStore('products');
+    const counts: Record<string, number> = {};
+
+    const req = store.openCursor();
+    req.onsuccess = (event) => {
+      const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+      if (cursor) {
+        const col = cursor.value.collection?.trim();
+        if (col) {
+          counts[col] = (counts[col] || 0) + 1;
+        }
+        cursor.continue();
+      } else {
+        resolve(counts);
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function getDistinctCollections(onlyVisible: boolean = true): Promise<string[]> {
+  const allCols = await getAllDistinctCollections();
+  if (!onlyVisible) {
+    return allCols;
+  }
+  const visible = await getVisibleCollections();
+  if (!visible || visible.length === 0) {
+    return allCols;
+  }
+  const visibleSet = new Set(visible.map((c) => c.toUpperCase()));
+  const filtered = allCols.filter((c) => visibleSet.has(c.toUpperCase()));
+  return filtered.length > 0 ? filtered : allCols;
 }
 
 export async function getDistinctDescriptions(collection?: string): Promise<string[]> {
@@ -483,30 +567,82 @@ export async function deletePromotionGroup(id: string): Promise<void> {
   }
 }
 
+export function isPromotionActive(promo: PromotionGroup, dateStr?: string): boolean {
+  if (!dateStr) return true;
+  const targetDate = dateStr.slice(0, 10);
+  if (promo.startDate && promo.startDate.trim() !== '') {
+    if (targetDate < promo.startDate.trim()) {
+      return false;
+    }
+  }
+  if (promo.endDate && promo.endDate.trim() !== '') {
+    if (targetDate > promo.endDate.trim()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function doesPromotionApplyToItem(
+  promo: PromotionGroup,
+  collection: string,
+  color: string,
+  quoteDate?: string
+): boolean {
+  if (!collection) return false;
+  if (!isPromotionActive(promo, quoteDate)) return false;
+
+  const colUpper = collection.trim().toUpperCase();
+  const colorUpper = (color || '').trim().toUpperCase();
+
+  // 1. Check new multi-collection rules if defined
+  if (promo.collectionRules && promo.collectionRules.length > 0) {
+    for (const rule of promo.collectionRules) {
+      if (rule.collection.trim().toUpperCase() === colUpper) {
+        if (rule.applyToAllColors) {
+          return true;
+        }
+        if (rule.selectedColors && rule.selectedColors.some((c) => c.trim().toUpperCase() === colorUpper)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // 2. Check legacy single-collection fields
+  if (promo.collection && promo.collection.trim().toUpperCase() === colUpper) {
+    if (promo.applyToAllColors) {
+      return true;
+    }
+    if (promo.selectedColors && promo.selectedColors.some((c) => c.trim().toUpperCase() === colorUpper)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function findApplicablePromotions(
+  promotionGroups: PromotionGroup[],
+  collection: string,
+  color: string,
+  quoteDate?: string
+): PromotionGroup[] {
+  if (!collection || !promotionGroups || promotionGroups.length === 0) return [];
+  return promotionGroups.filter((p) => doesPromotionApplyToItem(p, collection, color, quoteDate));
+}
+
 export function findApplicableDiscount(
   promotionGroups: PromotionGroup[],
   collection: string,
-  color: string
+  color: string,
+  quoteDate?: string
 ): number {
-  if (!collection) return 0;
-  
-  // Look for specific color match first
-  for (const promo of promotionGroups) {
-    if (promo.collection.toUpperCase() === collection.toUpperCase()) {
-      if (!promo.applyToAllColors && promo.selectedColors.some(c => c.toUpperCase() === color?.toUpperCase())) {
-        return promo.discountPercent;
-      }
-    }
-  }
-
-  // Look for all colors match
-  for (const promo of promotionGroups) {
-    if (promo.collection.toUpperCase() === collection.toUpperCase() && promo.applyToAllColors) {
-      return promo.discountPercent;
-    }
-  }
-
-  return 0;
+  const matching = findApplicablePromotions(promotionGroups, collection, color, quoteDate);
+  if (matching.length === 0) return 0;
+  // If multiple promotions overlap, default to the highest discount (UI lets user select)
+  return Math.max(...matching.map((m) => m.discountPercent));
 }
 
 // ---------------- Quotations ----------------

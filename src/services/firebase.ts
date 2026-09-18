@@ -374,6 +374,35 @@ export async function fetchCloudCompanySettings(): Promise<CompanySettings | nul
   }
 }
 
+export async function fetchCloudVisibleCollections(): Promise<string[] | null> {
+  const db = getCloudFirestore();
+  if (!db) return null;
+  try {
+    const snap = await getDoc(doc(db, 'settings', 'visibleCollections'));
+    if (snap.exists()) {
+      const data = snap.data();
+      return (data?.collections as string[]) || null;
+    }
+    return null;
+  } catch (err) {
+    console.error('Error fetching visible collections from Firestore:', err);
+    return null;
+  }
+}
+
+export async function uploadVisibleCollectionsToCloud(collections: string[]): Promise<boolean> {
+  const db = getCloudFirestore();
+  if (!db) return false;
+  try {
+    const ref = doc(db, 'settings', 'visibleCollections');
+    await setDoc(ref, { collections, updatedAt: Date.now() }, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('Error saving visible collections to Firestore:', err);
+    return false;
+  }
+}
+
 export async function fetchCloudProducts(): Promise<Product[] | null> {
   const db = getCloudFirestore();
   if (!db) return null;

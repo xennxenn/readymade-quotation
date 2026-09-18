@@ -1,23 +1,55 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Printer, ArrowLeft } from 'lucide-react';
-import { Quotation, CompanySettings } from '../types';
+import { Quotation, CompanySettings, StaffMember } from '../types';
 import { calculateQuotation, formatItemDescription } from '../services/calculations';
 import { thaiBahtText } from '../services/thaiBaht';
-import { DEFAULT_COMPANY_SETTINGS } from '../services/db';
+import { DEFAULT_COMPANY_SETTINGS, getStaffList } from '../services/db';
 
 interface QuotationPreviewProps {
   quotation: Quotation;
   companySettings?: CompanySettings;
+  staffList?: StaffMember[];
   onBackToEdit?: () => void;
 }
 
 export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
   quotation,
   companySettings = DEFAULT_COMPANY_SETTINGS,
+  staffList: initialStaffList,
   onBackToEdit,
 }) => {
+  const [staffList, setStaffList] = useState<StaffMember[]>(initialStaffList || []);
+
+  useEffect(() => {
+    if (initialStaffList && initialStaffList.length > 0) {
+      setStaffList(initialStaffList);
+    } else {
+      getStaffList().then((list) => setStaffList(list));
+    }
+  }, [initialStaffList]);
+
   const calc = calculateQuotation(quotation);
   const thaiBaht = thaiBahtText(calc.balanceRemaining);
+
+  // Identify Sales Person (ผู้เสนอราคา)
+  const salesPersonName = quotation.customer?.salesName || '';
+  const salesStaff = staffList.find(
+    (s) =>
+      Boolean(salesPersonName) &&
+      (s.name === salesPersonName ||
+        s.employeeId === salesPersonName ||
+        s.name.includes(salesPersonName))
+  );
+
+  // Identify Inspector / Admin (ผู้ตรวจสอบคือผู้ดูแล)
+  const inspectorStaff =
+    staffList.find(
+      (s) =>
+        (quotation.inspectorName &&
+          (s.name === quotation.inspectorName || s.employeeId === quotation.inspectorName)) ||
+        s.role === 'manager' ||
+        s.role === 'admin'
+    ) || staffList.find((s) => s.role === 'admin');
 
   const handlePrint = () => {
     window.print();
@@ -427,29 +459,57 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
         </div>
 
         {/* SIGNATURES SECTION */}
-        <div className="grid grid-cols-3 gap-8 text-center pt-8 text-[10.5px] print-break-inside-avoid">
-          {/* Sales Signature */}
-          <div className="space-y-1">
-            <div className="border-b border-black w-4/5 mx-auto h-8"></div>
-            <div className="font-bold">ผู้เสนอราคา / Sale</div>
+        <div className="grid grid-cols-3 gap-6 text-center pt-8 text-[10.5px] print-break-inside-avoid">
+          {/* Sales Signature (ผู้เสนอราคาคือพนักงานขาย) */}
+          <div className="space-y-1 flex flex-col items-center">
+            <div className="w-4/5 mx-auto h-12 flex items-end justify-center">
+              {salesStaff?.signatureUrl ? (
+                <img
+                  src={salesStaff.signatureUrl}
+                  alt="ลายเซ็นต์ผู้เสนอราคา"
+                  className="max-h-12 max-w-full object-contain mb-0.5"
+                />
+              ) : null}
+            </div>
+            <div className="border-b border-black w-4/5 mx-auto"></div>
+            <div className="font-bold pt-1 text-[10px]">
+              ( {salesStaff?.name || salesPersonName || '...........................................'} )
+            </div>
+            <div className="font-bold text-[10px] text-black">ผู้เสนอราคา / Sale</div>
             <div className="text-[9.5px] text-black font-mono">
               {formatDateDisplay(quotation.date)}
             </div>
           </div>
 
-          {/* Inspector Signature */}
-          <div className="space-y-1">
-            <div className="border-b border-black w-4/5 mx-auto h-8"></div>
-            <div className="font-bold">ผู้ตรวจสอบ / Inspector</div>
+          {/* Inspector Signature (ผู้ตรวจสอบคือผู้ดูแล) */}
+          <div className="space-y-1 flex flex-col items-center">
+            <div className="w-4/5 mx-auto h-12 flex items-end justify-center">
+              {inspectorStaff?.signatureUrl ? (
+                <img
+                  src={inspectorStaff.signatureUrl}
+                  alt="ลายเซ็นต์ผู้ตรวจสอบ"
+                  className="max-h-12 max-w-full object-contain mb-0.5"
+                />
+              ) : null}
+            </div>
+            <div className="border-b border-black w-4/5 mx-auto"></div>
+            <div className="font-bold pt-1 text-[10px]">
+              ( {inspectorStaff?.name || quotation.inspectorName || '...........................................'} )
+            </div>
+            <div className="font-bold text-[10px] text-black">ผู้ตรวจสอบ / Inspector (ผู้ดูแล)</div>
             <div className="text-[9.5px] text-black font-mono">
               {formatDateDisplay(quotation.date)}
             </div>
           </div>
 
           {/* Customer Signature */}
-          <div className="space-y-1">
-            <div className="border-b border-black w-4/5 mx-auto h-8"></div>
-            <div className="font-bold">ผู้สั่งซื้อ / Customer</div>
+          <div className="space-y-1 flex flex-col items-center">
+            <div className="w-4/5 mx-auto h-12 flex items-end justify-center"></div>
+            <div className="border-b border-black w-4/5 mx-auto"></div>
+            <div className="font-bold pt-1 text-[10px]">
+              ( ........................................... )
+            </div>
+            <div className="font-bold text-[10px] text-black">ผู้สั่งซื้อ / Customer</div>
             <div className="text-[9.5px] text-black">
               วันที่ ......./......./.......
             </div>

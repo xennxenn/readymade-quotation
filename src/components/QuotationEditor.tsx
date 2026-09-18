@@ -183,6 +183,24 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
     });
   };
 
+  const handleUpdateItemDiscount = (sectionId: string, itemId: string, discount: number) => {
+    const validDiscount = Math.max(0, Math.min(100, isNaN(discount) ? 0 : discount));
+    const sections = quotation.sections.map((sec) => {
+      if (sec.id !== sectionId) return sec;
+      return {
+        ...sec,
+        items: sec.items.map((i) =>
+          i.id === itemId ? { ...i, discountPercent: validDiscount } : i
+        ),
+      };
+    });
+
+    onChange({
+      ...quotation,
+      sections,
+    });
+  };
+
   // Notes Management
   const handleAddNote = () => {
     onChange({
@@ -685,13 +703,22 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
                               {itemCalc?.grossAmount.toLocaleString()} ฿
                             </td>
                             <td className="py-2.5 px-2 text-center">
-                              {item.discountPercent > 0 ? (
-                                <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-bold font-mono">
-                                  {item.discountPercent}%
-                                </span>
-                              ) : (
-                                <span className="text-slate-400">-</span>
-                              )}
+                              <div className="inline-flex items-center justify-center">
+                                <div className="relative flex items-center">
+                                  <DirectNumberInput
+                                    min={0}
+                                    max={100}
+                                    allowZero={true}
+                                    value={item.discountPercent ?? 0}
+                                    onChange={(newDisc) => handleUpdateItemDiscount(section.id, item.id, newDisc)}
+                                    className="w-14 h-7 text-center font-mono font-bold text-xs bg-white border border-slate-300 rounded-md focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-emerald-700 shadow-2xs pr-3"
+                                    title="แก้ไขส่วนลดของรายการนี้ได้โดยตรง (ไม่มีผลย้อนหลังกับใบอื่น)"
+                                  />
+                                  <span className="absolute right-1 text-[10px] font-bold text-slate-400 pointer-events-none">
+                                    %
+                                  </span>
+                                </div>
+                              </div>
                             </td>
                             <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-800">
                               {itemCalc?.netAmount.toLocaleString()} ฿
@@ -1041,6 +1068,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
           quotation.sections.find((s) => s.id === activeSectionId)?.title || 'ชุดข้อมูล'
         }
         initialItem={editingItem?.item || null}
+        quoteDate={quotation.date}
       />
     </div>
   );

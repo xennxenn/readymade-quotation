@@ -19,6 +19,7 @@ import {
   getDistinctColors,
   findProduct,
   findApplicableDiscount,
+  findApplicablePromotions,
 } from '../services/db';
 import { formatItemDescription } from '../services/calculations';
 import { SearchableSelect, SearchableOption } from './SearchableSelect';
@@ -31,6 +32,7 @@ interface AddItemModalProps {
   promotionGroups: PromotionGroup[];
   sectionTitle?: string;
   initialItem?: QuoteItem | null;
+  quoteDate?: string;
 }
 
 const CUSTOM_PATTERNS: CustomPatternType[] = [
@@ -51,6 +53,7 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
   promotionGroups,
   sectionTitle,
   initialItem,
+  quoteDate,
 }) => {
   const [entryMode, setEntryMode] = useState<'barcode' | 'hierarchy'>('hierarchy');
 
@@ -74,6 +77,7 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
   const [discountPercent, setDiscountPercent] = useState<number>(0);
   const [excludeOntopDiscount, setExcludeOntopDiscount] = useState(false);
   const [matchedBarcode, setMatchedBarcode] = useState<string | undefined>(undefined);
+  const [matchingPromos, setMatchingPromos] = useState<PromotionGroup[]>([]);
 
   // Dynamic dropdown options
   const [collectionsList, setCollectionsList] = useState<string[]>([]);
@@ -103,6 +107,16 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
         setMatchedBarcode(initialItem.barcode);
         setEntryMode(initialItem.barcode ? 'barcode' : 'hierarchy');
         if (initialItem.barcode) setBarcodeInput(initialItem.barcode);
+
+        if (initialItem.collection && initialItem.color) {
+          const promos = findApplicablePromotions(
+            promotionGroups,
+            initialItem.collection,
+            initialItem.color,
+            quoteDate
+          );
+          setMatchingPromos(promos);
+        }
       } else {
         // Reset defaults
         resetForm();
@@ -111,7 +125,7 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
   }, [isOpen, initialItem]);
 
   const loadCollections = async () => {
-    const list = await getDistinctCollections();
+    const list = await getDistinctCollections(true);
     setCollectionsList(list);
   };
 
@@ -135,6 +149,7 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
     setMatchedBarcode(undefined);
     setSizesList([]);
     setColorsList([]);
+    setMatchingPromos([]);
   };
 
   // When collection changes
@@ -213,9 +228,16 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
         setUnit(prod.unit || 'ชิ้น');
         setMatchedBarcode(prod.barcode);
 
-        // Apply Promotion Group default discount
-        const defaultDiscount = findApplicableDiscount(promotionGroups, collection, newColor);
-        setDiscountPercent(defaultDiscount);
+        // Find applicable promotions
+        const promos = findApplicablePromotions(promotionGroups, collection, newColor, quoteDate);
+        setMatchingPromos(promos);
+        if (!initialItem) {
+          if (promos.length > 0) {
+            setDiscountPercent(promos[0].discountPercent);
+          } else {
+            setDiscountPercent(0);
+          }
+        }
       }
     }
   };
@@ -236,10 +258,17 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
       setUnit(prod.unit || 'ชิ้น');
       setMatchedBarcode(prod.barcode);
 
-      const defaultDiscount = findApplicableDiscount(promotionGroups, prod.collection, prod.color);
-      setDiscountPercent(defaultDiscount);
+      const promos = findApplicablePromotions(promotionGroups, prod.collection, prod.color, quoteDate);
+      setMatchingPromos(promos);
+      if (!initialItem) {
+        if (promos.length > 0) {
+          setDiscountPercent(promos[0].discountPercent);
+        } else {
+          setDiscountPercent(0);
+        }
+      }
 
-      setBarcodeSearchStatus('พบบาร์โค้ด: ' + prod.itemName || prod.description);
+      setBarcodeSearchStatus('พบบาร์โค้ด: ' + (prod.itemName || prod.description));
     } else {
       setBarcodeSearchStatus('ไม่พบบาร์โค้ดนี้ในฐานข้อมูล');
     }
@@ -708,6 +737,62 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Overlapping Promotions Notification & Selector */}
+            {matchingPromos.length > 1 && (
+              <div className="p-3 bg-amber-50/90 rounded-lg border border-amber-200 text-xs space-y-2">
+                <div className="font-bold text-amber-900 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    พบโปรโมชั่นส่วนลดที่คาบเกี่ยวกัน ({matchingPromos.length} กลุ่ม) — กรุณาเลือกหนึ่งกลุ่มที่ต้องการใช้:
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {matchingPromos.map((p) => {
+                    const isSelected = discountPercent === p.discountPercent;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setDiscountPercent(p.discountPercent)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-2 transition-all ${
+                          isSelected
+                            ? 'bg-amber-600 text-white border-amber-700 shadow-xs ring-2 ring-amber-300'
+                            : 'bg-white text-slate-700 border-amber-200 hover:bg-amber-100 hover:border-amber-300'
+                        }`}
+                      >
+                        <Tag className="w-3.5 h-3.5" />
+                        <span>{p.name}</span>
+                        <span
+                          className={`font-mono font-bold px-1.5 py-0.5 rounded text-[11px] ${
+                            isSelected ? 'bg-amber-800 text-white' : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {p.discountPercent}%
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="text-[11px] text-amber-800/80">
+                  * หรือสามารถพิมพ์ระบุส่วนลดที่ต้องการเองได้ในช่องส่วนลดด้านบน (ไม่มีผลย้อนหลังกับใบอื่น)
+                </div>
+              </div>
+            )}
+
+            {matchingPromos.length === 1 && (
+              <div className="px-3 py-1.5 bg-emerald-50 rounded-lg border border-emerald-200 text-xs text-emerald-800 flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>
+                    ใช้โปรโมชั่น: <strong>{matchingPromos[0].name}</strong>
+                  </span>
+                </div>
+                <span className="font-mono font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-[11px]">
+                  {matchingPromos[0].discountPercent}%
+                </span>
+              </div>
+            )}
 
             {/* Exclude Ontop Discount Option */}
             <div className="pt-2 border-t border-slate-200">

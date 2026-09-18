@@ -17,6 +17,7 @@ import {
   LogOut,
   Shield,
   Cloud,
+  CheckSquare,
   User as UserIcon,
 } from 'lucide-react';
 import { Quotation, StaffMember, PromotionGroup, CompanySettings } from './types';
@@ -53,6 +54,7 @@ import { CompanySettingsModal } from './components/CompanySettingsModal';
 import { QuotationsListView } from './components/QuotationsListView';
 import { LoginView } from './components/LoginView';
 import { CloudSyncModal } from './components/CloudSyncModal';
+import { ActiveCollectionsModal } from './components/ActiveCollectionsModal';
 
 const AUTH_STORAGE_KEY = 'pasaya_auth_session';
 const ACTIVE_TAB_KEY = 'pasaya_active_tab';
@@ -96,7 +98,7 @@ function createDefaultEmptyQuotation(adminName = '', salesName = ''): Quotation 
     depositRatePercent: 0,
     notes: [
       'ผู้สั่งซื้อจะต้องชำระเงินครบทั้งหมด ก่อนดำเนินการสั่งผลิต',
-      'รอสินค้า 30 วันทำการ',
+      'รอสินค้า 2-7 วันทำการ',
     ],
     inspectorName: '',
     createdAt: Date.now(),
@@ -135,6 +137,7 @@ export default function App() {
   const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
   const [isCompanySettingsOpen, setIsCompanySettingsOpen] = useState(false);
   const [isCloudSyncModalOpen, setIsCloudSyncModalOpen] = useState(false);
+  const [isActiveCollectionsOpen, setIsActiveCollectionsOpen] = useState(false);
   const [isNewQuoteConfirmOpen, setIsNewQuoteConfirmOpen] = useState(false);
 
   // Feedback Toast
@@ -323,7 +326,7 @@ export default function App() {
       depositRatePercent: 0,
       notes: [
         'ผู้สั่งซื้อจะต้องชำระเงินครบทั้งหมด ก่อนดำเนินการสั่งผลิต',
-        'รอสินค้า 30 วันทำการ',
+        'รอสินค้า 2-7 วันทำการ',
       ],
       inspectorName: staffList.find((s) => s.role === 'manager')?.name || '',
       createdAt: Date.now(),
@@ -446,6 +449,17 @@ export default function App() {
                   >
                     <Tag className="w-3.5 h-3.5 text-emerald-600" />
                     <span className="hidden 2xl:inline">โปรโมชั่น</span>
+                  </button>
+
+                  {/* เลือก Collection ที่แสดง */}
+                  <button
+                    type="button"
+                    onClick={() => setIsActiveCollectionsOpen(true)}
+                    className="px-2.5 sm:px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="เลือก Collection ที่ต้องการให้แสดงในระบบและตัวเลือก Dropdown"
+                  >
+                    <CheckSquare className="w-3.5 h-3.5 text-teal-600" />
+                    <span className="hidden 2xl:inline">เลือก Collection</span>
                   </button>
 
                   {/* Cloud Realtime Sync Configuration */}
@@ -623,6 +637,7 @@ export default function App() {
           <QuotationPreview
             quotation={quotation}
             companySettings={companySettings}
+            staffList={staffList}
             onBackToEdit={() => handleTabChange('editor')}
           />
         )}
@@ -722,6 +737,14 @@ export default function App() {
             onConfigSaved={() => {
               setIsCloudActive(isCloudSyncEnabled());
               showToast('✅ อัปเดตการตั้งค่า Cloud Sync เรียบร้อย');
+            }}
+          />
+
+          <ActiveCollectionsModal
+            isOpen={isActiveCollectionsOpen}
+            onClose={() => setIsActiveCollectionsOpen(false)}
+            onSaved={() => {
+              showToast('✅ อัปเดตรายการ Collection ที่แสดงเรียบร้อย');
             }}
           />
         </>

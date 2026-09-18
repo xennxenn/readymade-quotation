@@ -32,15 +32,9 @@
   }
 
   .quotation-print-sheet,
-  .quotation-print-sheet div,
-  .quotation-print-sheet table,
-  .quotation-print-sheet thead,
-  .quotation-print-sheet tbody,
-  .quotation-print-sheet tr,
-  .quotation-print-sheet th,
-  .quotation-print-sheet td {
-    background-color: white !important;
-    background: white !important;
+  .quotation-print-sheet * {
+    background-color: #ffffff !important;
+    background: #ffffff !important;
   }
 
   .quotation-print-sheet {
