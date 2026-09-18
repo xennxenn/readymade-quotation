@@ -14,6 +14,7 @@ import {
   Barcode,
   Save,
   CheckCircle2,
+  Cloud,
 } from 'lucide-react';
 import { Product } from '../types';
 import { DirectNumberInput } from './DirectNumberInput';
@@ -24,7 +25,11 @@ import {
   updateProduct,
   deleteProduct,
   clearAllProducts,
+  syncProductsToIndexedDB,
 } from '../services/db';
+import {
+  fetchCloudProducts,
+} from '../services/firebase';
 import {
   parseAndImportFile,
   generateSampleCsv,
@@ -64,6 +69,7 @@ export const ProductDatabaseModal: React.FC<ProductDatabaseModalProps> = ({
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
   const [confirmInputText, setConfirmInputText] = useState('');
   const [isClearing, setIsClearing] = useState(false);
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -182,6 +188,23 @@ export const ProductDatabaseModal: React.FC<ProductDatabaseModalProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  // Sync products directly from central Firestore database
+  const handleSyncFromCloud = async () => {
+    setIsSyncingCloud(true);
+    try {
+      const cloudProds = await fetchCloudProducts();
+      if (cloudProds && cloudProds.length > 0) {
+        await syncProductsToIndexedDB(cloudProds);
+        await loadProducts();
+        onDataChanged();
+      }
+    } catch (err) {
+      console.error('Error syncing cloud products:', err);
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
   // Perform clear all after typing "confirm"
   const handleExecuteClearAll = async () => {
     if (confirmInputText.trim().toLowerCase() !== 'confirm') return;
@@ -277,6 +300,17 @@ export const ProductDatabaseModal: React.FC<ProductDatabaseModalProps> = ({
             >
               <Upload className="w-3.5 h-3.5" />
               นำเข้าไฟล์ CSV/TXT (&gt;1,000,000 Row)
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSyncFromCloud}
+              disabled={isSyncingCloud}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg font-medium text-xs flex items-center gap-1.5 transition-colors shadow-2xs"
+              title="ดึงข้อมูลสินค้าล่าสุดจากฐานข้อมูลกลาง Cloud Firestore ให้ตรงกันทุกคน"
+            >
+              <Cloud className={`w-3.5 h-3.5 ${isSyncingCloud ? 'animate-spin' : ''}`} />
+              {isSyncingCloud ? 'กำลังซิงค์...' : 'ซิงค์จากฐานข้อมูลกลาง'}
             </button>
 
             <button

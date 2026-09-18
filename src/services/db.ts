@@ -1,5 +1,4 @@
 import { Product, PromotionGroup, Quotation, StaffMember, CompanySettings } from '../types';
-import { INITIAL_PRODUCTS, INITIAL_PROMOTION_GROUPS, INITIAL_STAFF, INITIAL_SAMPLE_QUOTATION } from '../data/initialData';
 import {
   isCloudSyncEnabled,
   uploadQuotationToCloud,
@@ -12,6 +11,7 @@ import {
   uploadProductToCloud,
   batchUploadProductsToCloud,
   deleteProductFromCloud,
+  clearAllProductsFromCloud,
   fetchCloudStaffByEmployeeId,
 } from './firebase';
 
@@ -60,7 +60,7 @@ export async function getDB(): Promise<IDBDatabase> {
 
     request.onsuccess = async (event) => {
       dbInstance = (event.target as IDBOpenDBRequest).result;
-      await initializeDefaultDataIfEmpty(dbInstance);
+      await purgeLegacyMockData(dbInstance);
       resolve(dbInstance);
     };
 
@@ -70,33 +70,42 @@ export async function getDB(): Promise<IDBDatabase> {
   });
 }
 
-async function initializeDefaultDataIfEmpty(db: IDBDatabase): Promise<void> {
+/**
+ * Purges any legacy mock/initial sample data from local IndexedDB.
+ * Never inserts mock data — only user data and central cloud data are stored.
+ */
+async function purgeLegacyMockData(db: IDBDatabase): Promise<void> {
   return new Promise((resolve) => {
-    const tx = db.transaction(['products', 'promotionGroups', 'staff', 'quotations'], 'readwrite');
-    const productStore = tx.objectStore('products');
-    const countReq = productStore.count();
+    try {
+      const tx = db.transaction(['products', 'promotionGroups', 'staff', 'quotations'], 'readwrite');
+      const productStore = tx.objectStore('products');
+      const promoStore = tx.objectStore('promotionGroups');
+      const staffStore = tx.objectStore('staff');
+      const quoteStore = tx.objectStore('quotations');
 
-    countReq.onsuccess = () => {
-      if (countReq.result === 0) {
-        // Seed default products
-        INITIAL_PRODUCTS.forEach((p) => productStore.put(p));
-
-        // Seed default promotions
-        const promoStore = tx.objectStore('promotionGroups');
-        INITIAL_PROMOTION_GROUPS.forEach((pg) => promoStore.put(pg));
-
-        // Seed default staff
-        const staffStore = tx.objectStore('staff');
-        INITIAL_STAFF.forEach((s) => staffStore.put(s));
-
-        // Seed default sample quotation
-        const quoteStore = tx.objectStore('quotations');
-        quoteStore.put(INITIAL_SAMPLE_QUOTATION);
+      // Purge mock dummy products p-1 to p-40
+      for (let i = 1; i <= 40; i++) {
+        productStore.delete(`p-${i}`);
       }
-    };
 
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => resolve();
+      // Purge mock promotion groups promo-1 to promo-10
+      for (let i = 1; i <= 10; i++) {
+        promoStore.delete(`promo-${i}`);
+      }
+
+      // Purge mock staff st-1 to st-6
+      for (let i = 1; i <= 6; i++) {
+        staffStore.delete(`st-${i}`);
+      }
+
+      // Purge sample quotation
+      quoteStore.delete('quote-sample-001');
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch {
+      resolve();
+    }
   });
 }
 
@@ -327,42 +336,66 @@ export async function addProduct(product: Omit<Product, 'id'>): Promise<Product>
     createdAt: Date.now(),
   };
 
-  return new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const tx = db.transaction('products', 'readwrite');
     const req = tx.objectStore('products').add(newProduct);
-    req.onsuccess = () => resolve(newProduct);
+    req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
   });
+
+  if (isCloudSyncEnabled()) {
+    uploadProductToCloud(newProduct).catch((err) => {
+      console.warn('Could not sync product to cloud:', err);
+    });
+  }
+
+  return newProduct;
 }
 
 export async function updateProduct(product: Product): Promise<void> {
   const db = await getDB();
-  return new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const tx = db.transaction('products', 'readwrite');
     const req = tx.objectStore('products').put(product);
     req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
   });
+
+  if (isCloudSyncEnabled()) {
+    uploadProductToCloud(product).catch((err) => {
+      console.warn('Could not sync product update to cloud:', err);
+    });
+  }
 }
 
 export async function deleteProduct(productId: string): Promise<void> {
   const db = await getDB();
-  return new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const tx = db.transaction('products', 'readwrite');
     const req = tx.objectStore('products').delete(productId);
     req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
   });
+
+  if (isCloudSyncEnabled()) {
+    deleteProductFromCloud(productId).catch((err) => {
+      console.warn('Could not delete product from cloud:', err);
+    });
+  }
 }
 
 export async function clearAllProducts(): Promise<void> {
   const db = await getDB();
-  return new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const tx = db.transaction('products', 'readwrite');
     const req = tx.objectStore('products').clear();
     req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
   });
+
+  if (isCloudSyncEnabled()) {
+    await clearAllProductsFromCloud();
+  }
 }
 
 // ---------------- High-Speed Batch Import for Millions of Rows ----------------
@@ -737,11 +770,12 @@ export async function resetCompanySettings(): Promise<CompanySettings> {
 // ---------------- Bi-directional Cloud Cache Sync Helpers ----------------
 
 export async function syncStaffListToIndexedDB(staffList: StaffMember[]): Promise<void> {
-  if (!staffList || staffList.length === 0) return;
+  if (!staffList) return;
   const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction('staff', 'readwrite');
     const store = tx.objectStore('staff');
+    store.clear();
     for (const s of staffList) {
       store.put(s);
     }
@@ -751,11 +785,12 @@ export async function syncStaffListToIndexedDB(staffList: StaffMember[]): Promis
 }
 
 export async function syncQuotationsToIndexedDB(quoteList: Quotation[]): Promise<void> {
-  if (!quoteList || quoteList.length === 0) return;
+  if (!quoteList) return;
   const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction('quotations', 'readwrite');
     const store = tx.objectStore('quotations');
+    store.clear();
     for (const q of quoteList) {
       store.put(q);
     }
@@ -765,11 +800,12 @@ export async function syncQuotationsToIndexedDB(quoteList: Quotation[]): Promise
 }
 
 export async function syncPromotionsToIndexedDB(promoList: PromotionGroup[]): Promise<void> {
-  if (!promoList || promoList.length === 0) return;
+  if (!promoList) return;
   const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction('promotionGroups', 'readwrite');
     const store = tx.objectStore('promotionGroups');
+    store.clear();
     for (const pg of promoList) {
       store.put(pg);
     }
@@ -779,11 +815,12 @@ export async function syncPromotionsToIndexedDB(promoList: PromotionGroup[]): Pr
 }
 
 export async function syncProductsToIndexedDB(productList: Product[]): Promise<void> {
-  if (!productList || productList.length === 0) return;
+  if (!productList) return;
   const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction('products', 'readwrite');
     const store = tx.objectStore('products');
+    store.clear();
     for (const p of productList) {
       store.put(p);
     }

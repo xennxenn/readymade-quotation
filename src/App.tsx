@@ -20,7 +20,6 @@ import {
   User as UserIcon,
 } from 'lucide-react';
 import { Quotation, StaffMember, PromotionGroup, CompanySettings } from './types';
-import { INITIAL_SAMPLE_QUOTATION } from './data/initialData';
 import {
   getStaffList,
   getPromotionGroups,
@@ -58,6 +57,53 @@ import { CloudSyncModal } from './components/CloudSyncModal';
 const AUTH_STORAGE_KEY = 'pasaya_auth_session';
 const ACTIVE_TAB_KEY = 'pasaya_active_tab';
 
+function createDefaultEmptyQuotation(adminName = '', salesName = ''): Quotation {
+  const today = new Date().toISOString().split('T')[0];
+  const randNum = Math.floor(1000 + Math.random() * 9000);
+  return {
+    id: 'quote-' + Date.now(),
+    quotationNumber: `QT-${new Date().getFullYear()}-${randNum}`,
+    date: today,
+    customer: {
+      contactName: '',
+      customerName: '',
+      addressLine1: '',
+      addressLine2: '',
+      addressLine3: '',
+      address: '',
+      taxId: '',
+      phone: '',
+      validityType: '7 วัน',
+      paymentCondition: 'ชำระเงิน 100%',
+      adminName,
+      salesName,
+    },
+    sections: [
+      {
+        id: 'sec-' + Date.now(),
+        title: 'ห้องนอนใหญ่ (Master Bedroom)',
+        items: [],
+      },
+    ],
+    ontopDiscountPercent: 0,
+    additionalDiscount: {
+      enabled: false,
+      type: 'percent',
+      value: 0,
+      applyFrom: 'after_discount',
+      description: 'ส่วนลดพิเศษเพิ่มเติม',
+    },
+    depositRatePercent: 0,
+    notes: [
+      'ผู้สั่งซื้อจะต้องชำระเงินครบทั้งหมด ก่อนดำเนินการสั่งผลิต',
+      'รอสินค้า 30 วันทำการ',
+    ],
+    inspectorName: '',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+}
+
 export default function App() {
   // Authentication State - locally persisted so page refresh keeps user logged in
   const [currentUser, setCurrentUser] = useState<StaffMember | null>(() => {
@@ -74,7 +120,7 @@ export default function App() {
     return (saved as 'list' | 'editor' | 'preview') || 'list';
   });
 
-  const [quotation, setQuotation] = useState<Quotation>(INITIAL_SAMPLE_QUOTATION);
+  const [quotation, setQuotation] = useState<Quotation>(() => createDefaultEmptyQuotation());
   const [savedQuotations, setSavedQuotations] = useState<Quotation[]>([]);
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [promotionGroups, setPromotionGroups] = useState<PromotionGroup[]>([]);
@@ -157,16 +203,14 @@ export default function App() {
     try {
       if (isCloudSyncEnabled()) {
         setIsCloudActive(true);
-        // Ensure shared cloud database has admin, promotions, settings, products
+        // Ensure shared cloud database has admin, settings, and purge mock records
         await initializeCloudDatabaseSeed();
 
-        // If local product count is low or empty, sync from cloud products
-        const localProductCount = await getProductCount();
-        if (localProductCount === 0) {
-          const cloudProds = await fetchCloudProducts();
-          if (cloudProds && cloudProds.length > 0) {
-            await syncProductsToIndexedDB(cloudProds);
-          }
+        // ALWAYS sync products directly from central Cloud Firestore to local cache
+        // This guarantees EVERY user on ANY device sees the EXACT SAME central products
+        const cloudProds = await fetchCloudProducts();
+        if (cloudProds && cloudProds.length > 0) {
+          await syncProductsToIndexedDB(cloudProds);
         }
       }
 
@@ -187,6 +231,8 @@ export default function App() {
       setSavedQuotations(saved);
       if (saved.length > 0) {
         setQuotation(saved[0]);
+      } else {
+        setQuotation(createDefaultEmptyQuotation());
       }
     } catch (err) {
       console.error('Error initializing data', err);

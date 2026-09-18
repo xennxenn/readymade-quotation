@@ -17,7 +17,7 @@ import {
 } from 'firebase/firestore';
 import { Quotation, StaffMember, CompanySettings, PromotionGroup, Product } from '../types';
 import firebaseAppletConfig from '../../firebase-applet-config.json';
-import { INITIAL_PRODUCTS, INITIAL_PROMOTION_GROUPS, DEFAULT_COMPANY_SETTINGS } from '../data/initialData';
+import { DEFAULT_COMPANY_SETTINGS } from '../data/initialData';
 import { DEFAULT_FIREBASE_CONFIG } from '../config/firebaseConfig';
 
 export interface FirebaseConfig {
@@ -379,7 +379,7 @@ export async function fetchCloudProducts(): Promise<Product[] | null> {
   if (!db) return null;
   try {
     const snap = await getDocs(collection(db, 'products'));
-    if (snap.empty) return null;
+    if (snap.empty) return [];
     const list: Product[] = [];
     snap.forEach((d) => list.push(d.data() as Product));
     return list;
@@ -544,12 +544,102 @@ export async function deleteProductFromCloud(id: string): Promise<boolean> {
   }
 }
 
+export async function clearAllProductsFromCloud(): Promise<boolean> {
+  const db = getCloudFirestore();
+  if (!db) return false;
+
+  try {
+    const snap = await getDocs(collection(db, 'products'));
+    const CHUNK_SIZE = 450;
+    const docs = snap.docs;
+    for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
+      const chunk = docs.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      for (const d of chunk) {
+        batch.delete(d.ref);
+      }
+      await batch.commit();
+    }
+    return true;
+  } catch (err) {
+    console.error('Error clearing products from Firestore:', err);
+    return false;
+  }
+}
+
+/**
+ * Purges any initial/mock sample records from Firestore permanently.
+ * Guarantees that only user-uploaded or newly created real data exists.
+ */
+export async function purgeMockDataFromCloud(): Promise<void> {
+  const db = getCloudFirestore();
+  if (!db) return;
+
+  try {
+    // 1. Delete mock dummy products p-1 to p-40
+    for (let i = 1; i <= 40; i++) {
+      try {
+        const ref = doc(db, 'products', `p-${i}`);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          await deleteDoc(ref);
+        }
+      } catch (e) {
+        // ignore individual delete failure
+      }
+    }
+
+    // 2. Delete mock promotion groups
+    for (let i = 1; i <= 10; i++) {
+      try {
+        const ref = doc(db, 'promotionGroups', `promo-${i}`);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          await deleteDoc(ref);
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    // 3. Delete mock sample quotations
+    try {
+      const qRef = doc(db, 'quotations', 'quote-sample-001');
+      const qSnap = await getDoc(qRef);
+      if (qSnap.exists()) {
+        await deleteDoc(qRef);
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    // 4. Delete mock staff st-1 to st-6
+    for (let i = 1; i <= 6; i++) {
+      try {
+        const ref = doc(db, 'staff', `st-${i}`);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          await deleteDoc(ref);
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+  } catch (err) {
+    console.warn('Error purging mock data from cloud:', err);
+  }
+}
+
 // ---------------- AUTOMATIC CLOUD SEEDER ----------------
 
 /**
- * Initializes default shared data on Cloud Firestore if collections are empty.
- * This guarantees that any deployed version (Vercel, Cloud Run, new browser)
- * connects to the EXACT same database with all required default records.
+ * Initializes default shared data on Cloud Firestore.
+ * Strictly adheres to USER INTENT:
+ * - NO initial mock products (only real imported products)
+ * - NO initial mock promotions
+ * - NO sample quotations
+ * - Only ensures Admin Account (T58121) exists if missing
+ * - Purges any legacy mock data from the central Firestore
  */
 export async function initializeCloudDatabaseSeed(): Promise<{
   seededStaff: boolean;
@@ -568,7 +658,10 @@ export async function initializeCloudDatabaseSeed(): Promise<{
   if (!db) return result;
 
   try {
-    // 1. Ensure Admin Account (T58121) exists in Firestore
+    // 0. Purge any legacy mock records from Firestore
+    await purgeMockDataFromCloud();
+
+    // 1. Ensure Admin Account (T58121) exists in Firestore if no admin is present
     const adminRef = doc(db, 'staff', 'st-admin-t58121');
     const adminSnap = await getDoc(adminRef);
     if (!adminSnap.exists()) {
@@ -584,30 +677,12 @@ export async function initializeCloudDatabaseSeed(): Promise<{
       result.seededStaff = true;
     }
 
-    // 2. Check Promotion Groups in Firestore
-    const promoSnap = await getDocs(collection(db, 'promotionGroups'));
-    if (promoSnap.empty) {
-      const batch = writeBatch(db);
-      for (const pg of INITIAL_PROMOTION_GROUPS) {
-        batch.set(doc(db, 'promotionGroups', pg.id), sanitizeForFirestore(pg));
-      }
-      await batch.commit();
-      result.seededPromos = true;
-    }
-
-    // 3. Check Company Settings in Firestore
+    // 2. Check Company Settings in Firestore
     const settingsDoc = doc(db, 'settings', 'company');
     const settingsSnap = await getDoc(settingsDoc);
     if (!settingsSnap.exists()) {
       await setDoc(settingsDoc, sanitizeForFirestore(DEFAULT_COMPANY_SETTINGS));
       result.seededSettings = true;
-    }
-
-    // 4. Check Products in Firestore
-    const prodSnap = await getDocs(collection(db, 'products'));
-    if (prodSnap.empty) {
-      await batchUploadProductsToCloud(INITIAL_PRODUCTS);
-      result.seededProducts = true;
     }
   } catch (err) {
     console.error('Error during cloud database initialization:', err);
