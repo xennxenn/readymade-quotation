@@ -1,4 +1,4 @@
-import { Product, PromotionGroup, Quotation, StaffMember, CompanySettings } from '../types';
+import { Product, PromotionGroup, Quotation, QuoteItem, StaffMember, CompanySettings } from '../types';
 import {
   isCloudSyncEnabled,
   uploadQuotationToCloud,
@@ -963,5 +963,99 @@ export async function syncProductsToIndexedDB(productList: Product[]): Promise<v
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+}
+
+// ---------------- Order Form Barcode Resolution ----------------
+
+export const CUSTOM_ORDER_DEFAULT_BARCODE = '2020020019996';
+
+export async function resolveBarcodeForItem(item: QuoteItem): Promise<string> {
+  // สั่งตัดพิเศษ: ใช้บาร์โค้ด 2020020019996 เป็นบาร์โค้ดแทน
+  if (
+    item.isCustom ||
+    Boolean(item.customPattern) ||
+    Boolean(item.customSizeUnit) ||
+    (item.description && item.description.includes('สั่งตัดพิเศษ'))
+  ) {
+    return CUSTOM_ORDER_DEFAULT_BARCODE;
+  }
+
+  // หากมี barcode ระบุในตัวรายการอยู่แล้ว
+  if (item.barcode && item.barcode.trim()) {
+    return item.barcode.trim();
+  }
+
+  // ดึงมาจากฐานข้อมูลสินค้าใน IndexedDB
+  try {
+    const prod = await findProduct(
+      item.collection || '',
+      item.description || '',
+      item.size || '',
+      item.color || ''
+    );
+    if (prod && prod.barcode && prod.barcode.trim()) {
+      return prod.barcode.trim();
+    }
+  } catch (err) {
+    console.warn('Error resolving barcode via findProduct:', err);
+  }
+
+  // ค้นหาเพิ่มเติมในฐานข้อมูลด้วยเกณฑ์ Collection และ Color / Size / Description
+  try {
+    const db = await getDB();
+    const barcodeFromCursor = await new Promise<string | null>((resolve) => {
+      const tx = db.transaction('products', 'readonly');
+      const store = tx.objectStore('products');
+      const req = store.openCursor();
+      req.onsuccess = (e) => {
+        const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
+        if (cursor) {
+          const p = cursor.value as Product;
+          const matchColl = !item.collection || p.collection?.toLowerCase() === item.collection.toLowerCase();
+          const matchColor = !item.color || p.color?.toLowerCase() === item.color.toLowerCase();
+          const matchSize = !item.size || p.size?.toLowerCase() === item.size.toLowerCase();
+          const matchDesc = !item.description || p.description?.toLowerCase() === item.description.toLowerCase();
+
+          if (matchColl && matchColor && (matchSize || matchDesc) && p.barcode) {
+            resolve(p.barcode.trim());
+            return;
+          }
+          cursor.continue();
+        } else {
+          resolve(null);
+        }
+      };
+      req.onerror = () => resolve(null);
+    });
+
+    if (barcodeFromCursor) {
+      return barcodeFromCursor;
+    }
+  } catch (err) {
+    console.warn('Error searching barcode from cursor:', err);
+  }
+
+  return item.barcode?.trim() || CUSTOM_ORDER_DEFAULT_BARCODE;
+}
+
+export async function resolveBarcodesForQuotation(
+  quotation: Quotation
+): Promise<Record<string, string>> {
+  const result: Record<string, string> = {};
+  if (!quotation || !quotation.sections) return result;
+
+  const promises: Promise<void>[] = [];
+  for (const section of quotation.sections) {
+    for (const item of section.items) {
+      promises.push(
+        resolveBarcodeForItem(item).then((barcode) => {
+          result[item.id] = barcode;
+        })
+      );
+    }
+  }
+
+  await Promise.all(promises);
+  return result;
 }
 

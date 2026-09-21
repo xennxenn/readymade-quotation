@@ -19,6 +19,7 @@ import {
   Filter,
   ArrowUpDown,
   RefreshCw,
+  PackageCheck,
 } from 'lucide-react';
 import { Quotation, StaffMember } from '../types';
 import { calculateQuotation, formatItemDescription } from '../services/calculations';
@@ -30,7 +31,7 @@ interface QuotationsListViewProps {
   currentQuotationId?: string;
   staffList: StaffMember[];
   currentUser?: StaffMember;
-  onOpenQuotation: (quotation: Quotation, targetTab: 'editor' | 'preview') => void;
+  onOpenQuotation: (quotation: Quotation, targetTab: 'editor' | 'preview' | 'order_form') => void;
   onCreateNewQuotation: () => void;
   onRefreshData: () => Promise<void>;
   onShowToast: (msg: string) => void;
@@ -545,7 +546,7 @@ export const QuotationsListView: React.FC<QuotationsListViewProps> = ({
                     <button
                       type="button"
                       onClick={() => onOpenQuotation(q, 'editor')}
-                      className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
+                      className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                       title="เปิดในหน้าแก้ไข"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
@@ -555,11 +556,21 @@ export const QuotationsListView: React.FC<QuotationsListViewProps> = ({
                     <button
                       type="button"
                       onClick={() => onOpenQuotation(q, 'preview')}
-                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
-                      title="ดูตัวอย่างแบบพิมพ์จริง A4"
+                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="ดูตัวอย่างแบบพิมพ์จริง A4 (ใบเสนอราคา)"
                     >
                       <Printer className="w-3.5 h-3.5" />
                       <span>พิมพ์ A4</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onOpenQuotation(q, 'order_form')}
+                      className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-emerald-200/60"
+                      title="ดูแบบฟอร์มสำหรับสั่งออเดอร์ (พร้อมบาร์โค้ดแนบท้าย)"
+                    >
+                      <PackageCheck className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>สั่งออเดอร์</span>
                     </button>
 
                     <button

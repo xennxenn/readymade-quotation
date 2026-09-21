@@ -19,6 +19,7 @@ import {
   Cloud,
   CheckSquare,
   User as UserIcon,
+  PackageCheck,
 } from 'lucide-react';
 import { Quotation, StaffMember, PromotionGroup, CompanySettings } from './types';
 import {
@@ -46,6 +47,7 @@ import {
 } from './services/firebase';
 import { QuotationEditor } from './components/QuotationEditor';
 import { QuotationPreview } from './components/QuotationPreview';
+import { OrderFormPreview } from './components/OrderFormPreview';
 import { ProductDatabaseModal } from './components/ProductDatabaseModal';
 import { PromotionGroupModal } from './components/PromotionGroupModal';
 import { SavedQuotationsModal } from './components/SavedQuotationsModal';
@@ -117,9 +119,9 @@ export default function App() {
     }
   });
 
-  const [activeTab, setActiveTab] = useState<'list' | 'editor' | 'preview'>(() => {
+  const [activeTab, setActiveTab] = useState<'list' | 'editor' | 'preview' | 'order_form'>(() => {
     const saved = localStorage.getItem(ACTIVE_TAB_KEY);
-    return (saved as 'list' | 'editor' | 'preview') || 'list';
+    return (saved as 'list' | 'editor' | 'preview' | 'order_form') || 'list';
   });
 
   const [quotation, setQuotation] = useState<Quotation>(() => createDefaultEmptyQuotation());
@@ -144,7 +146,7 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Save active tab
-  const handleTabChange = (tab: 'list' | 'editor' | 'preview') => {
+  const handleTabChange = (tab: 'list' | 'editor' | 'preview' | 'order_form') => {
     setActiveTab(tab);
     localStorage.setItem(ACTIVE_TAB_KEY, tab);
   };
@@ -591,6 +593,20 @@ export default function App() {
                 <Printer className="w-4 h-4" />
                 ดูแบบฟอร์มพิมพ์จริง A4
               </button>
+
+              {/* TAB 4: ดูแบบฟอร์ม (สำหรับสั่งออเดอร์) */}
+              <button
+                type="button"
+                onClick={() => handleTabChange('order_form')}
+                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
+                  activeTab === 'order_form'
+                    ? 'bg-white text-emerald-800 shadow-xs border border-emerald-300 font-bold'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                <PackageCheck className="w-4 h-4 text-emerald-600" />
+                ดูแบบฟอร์ม (สำหรับสั่งออเดอร์)
+              </button>
             </div>
 
             <div className="hidden md:flex items-center gap-2 text-xs text-slate-500 font-mono">
@@ -610,7 +626,7 @@ export default function App() {
             currentQuotationId={quotation.id}
             staffList={staffList}
             currentUser={currentUser}
-            onOpenQuotation={(selected: Quotation, targetTab: 'editor' | 'preview') => {
+            onOpenQuotation={(selected: Quotation, targetTab: 'editor' | 'preview' | 'order_form') => {
               setQuotation(selected);
               handleTabChange(targetTab);
               showToast(`เปิดใบเสนอราคา ${selected.quotationNumber} แล้ว`);
@@ -640,6 +656,17 @@ export default function App() {
             companySettings={companySettings}
             staffList={staffList}
             onBackToEdit={() => handleTabChange('editor')}
+            onSwitchToOrderForm={() => handleTabChange('order_form')}
+          />
+        )}
+
+        {activeTab === 'order_form' && (
+          <OrderFormPreview
+            quotation={quotation}
+            companySettings={companySettings}
+            staffList={staffList}
+            onBackToEdit={() => handleTabChange('editor')}
+            onSwitchToQuotationPreview={() => handleTabChange('preview')}
           />
         )}
       </main>

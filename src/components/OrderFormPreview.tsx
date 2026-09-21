@@ -1,26 +1,33 @@
 import React, { useState, useEffect } from 'react';
-import { Printer, ArrowLeft, PackageCheck } from 'lucide-react';
+import { Printer, ArrowLeft, FileText, CheckCircle2, Barcode, Eye, Settings2 } from 'lucide-react';
 import { Quotation, CompanySettings, StaffMember } from '../types';
 import { calculateQuotation, formatItemDescription } from '../services/calculations';
 import { thaiBahtText } from '../services/thaiBaht';
-import { DEFAULT_COMPANY_SETTINGS, getStaffList } from '../services/db';
+import {
+  DEFAULT_COMPANY_SETTINGS,
+  getStaffList,
+  resolveBarcodesForQuotation,
+  CUSTOM_ORDER_DEFAULT_BARCODE,
+} from '../services/db';
 
-interface QuotationPreviewProps {
+interface OrderFormPreviewProps {
   quotation: Quotation;
   companySettings?: CompanySettings;
   staffList?: StaffMember[];
   onBackToEdit?: () => void;
-  onSwitchToOrderForm?: () => void;
+  onSwitchToQuotationPreview?: () => void;
 }
 
-export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
+export const OrderFormPreview: React.FC<OrderFormPreviewProps> = ({
   quotation,
   companySettings = DEFAULT_COMPANY_SETTINGS,
   staffList: initialStaffList,
   onBackToEdit,
-  onSwitchToOrderForm,
+  onSwitchToQuotationPreview,
 }) => {
   const [staffList, setStaffList] = useState<StaffMember[]>(initialStaffList || []);
+  const [barcodes, setBarcodes] = useState<Record<string, string>>({});
+  const [isLoadingBarcodes, setIsLoadingBarcodes] = useState<boolean>(true);
 
   useEffect(() => {
     if (initialStaffList && initialStaffList.length > 0) {
@@ -30,10 +37,34 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
     }
   }, [initialStaffList]);
 
+  // Load and resolve barcodes from database for all items
+  useEffect(() => {
+    let isCancelled = false;
+    setIsLoadingBarcodes(true);
+
+    resolveBarcodesForQuotation(quotation)
+      .then((resolved) => {
+        if (!isCancelled) {
+          setBarcodes(resolved);
+          setIsLoadingBarcodes(false);
+        }
+      })
+      .catch((err) => {
+        console.error('Error resolving quotation barcodes:', err);
+        if (!isCancelled) {
+          setIsLoadingBarcodes(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [quotation]);
+
   const calc = calculateQuotation(quotation);
   const thaiBaht = thaiBahtText(calc.balanceRemaining);
 
-  // Identify Sales Person (ผู้เสนอราคา)
+  // Identify Sales Person (ผู้เสนอราคา / ผู้สั่งออเดอร์)
   const salesPersonName = quotation.customer?.salesName || '';
   const salesStaff = staffList.find(
     (s) =>
@@ -43,18 +74,15 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
         s.name.includes(salesPersonName))
   );
 
-  // Identify Inspector / Admin: ยึดรายชื่อผู้ตรวจสอบตามที่ระบุใน "ผู้ดูแล/Admin :" ในใบเสนอราคานั้นๆ
+  // Identify Inspector / Admin: ยึดรายชื่อผู้ตรวจสอบตามที่ระบุใน "ผู้ดูแล/Admin :"
   const adminNameInQuotation = (quotation.customer?.adminName || quotation.inspectorName || '').trim();
-
-  const inspectorStaff = adminNameInQuotation
-    ? staffList.find(
-        (s) =>
-          s.name === adminNameInQuotation ||
-          s.employeeId === adminNameInQuotation ||
-          (s.name &&
-            (s.name.includes(adminNameInQuotation) || adminNameInQuotation.includes(s.name)))
-      )
-    : null;
+  const inspectorStaff = staffList.find(
+    (s) =>
+      Boolean(adminNameInQuotation) &&
+      (s.name === adminNameInQuotation ||
+        s.employeeId === adminNameInQuotation ||
+        s.name.includes(adminNameInQuotation))
+  );
 
   const handlePrint = () => {
     window.print();
@@ -62,7 +90,6 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
 
   const formatDateDisplay = (dateStr: string) => {
     if (!dateStr) return '';
-    // if YYYY-MM-DD convert to DD-MM-YYYY
     const parts = dateStr.split('-');
     if (parts.length === 3) {
       return `${parts[2]}-${parts[1]}-${parts[0]}`;
@@ -72,50 +99,88 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
 
   const logoH = companySettings?.logoHeight || 96;
 
+  // Helper to get barcode for item with custom check
+  const getItemBarcode = (item: any): string => {
+    if (
+      item.isCustom ||
+      Boolean(item.customPattern) ||
+      Boolean(item.customSizeUnit) ||
+      (item.description && item.description.includes('สั่งตัดพิเศษ'))
+    ) {
+      return CUSTOM_ORDER_DEFAULT_BARCODE;
+    }
+    return barcodes[item.id] || item.barcode?.trim() || CUSTOM_ORDER_DEFAULT_BARCODE;
+  };
+
   return (
     <div className="space-y-4">
       {/* Non-printable Action Bar */}
-      <div className="no-print flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-        <div className="flex items-center gap-3">
+      <div className="no-print bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           {onBackToEdit && (
             <button
               type="button"
               onClick={onBackToEdit}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
               กลับไปหน้าแก้ไข
             </button>
           )}
-          <span className="text-xs sm:text-sm font-semibold text-slate-700">
-            พรีวิวใบเสนอราคาแบบพิมพ์จริง (A4 Print Preview)
-          </span>
-        </div>
 
-        <div className="flex items-center gap-2">
-          {onSwitchToOrderForm && (
+          {onSwitchToQuotationPreview && (
             <button
               type="button"
-              onClick={onSwitchToOrderForm}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-xs font-semibold border border-emerald-200 transition-colors cursor-pointer"
+              onClick={onSwitchToQuotationPreview}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
             >
-              <PackageCheck className="w-4 h-4 text-emerald-600" />
-              ดูแบบฟอร์ม (สั่งออเดอร์)
+              <FileText className="w-4 h-4" />
+              ดูใบเสนอราคาปกติ (A4)
             </button>
           )}
 
+          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 font-medium">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span>แบบฟอร์มสำหรับสั่งออเดอร์ (บาร์โค้ดขึ้นบรรทัดใหม่เฉพาะตัวเลข)</span>
+          </div>
+
+          {isLoadingBarcodes && (
+            <span className="text-[11px] text-amber-600 animate-pulse">
+              กำลังตรวจสอบบาร์โค้ดจากฐานข้อมูล...
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handlePrint}
             className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs sm:text-sm font-bold shadow-xs hover:shadow-md transition-all cursor-pointer"
           >
             <Printer className="w-4 h-4" />
-            พิมพ์ / บันทึกเป็น PDF
+            พิมพ์ / บันทึก PDF ใบสั่งออเดอร์
           </button>
         </div>
       </div>
 
-      {/* PRINTABLE QUOTATION SHEET */}
+      {/* Info Notice: Barcode Rule */}
+      <div className="no-print bg-amber-50/80 border border-amber-200 rounded-xl px-4 py-2.5 text-xs text-amber-900 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Barcode className="w-4 h-4 text-amber-700 shrink-0" />
+          <span>
+            <strong>เงื่อนไขบาร์โค้ดสำหรับสั่งออเดอร์:</strong> บาร์โค้ดแสดงเฉพาะตัวเลขขึ้นบรรทัดใหม่อยู่ใต้ชื่อรายการสินค้า • สำหรับสินค้าสั่งตัดพิเศษจะใช้บาร์โค้ด{' '}
+            <code className="bg-amber-100 font-mono font-bold px-1.5 py-0.5 rounded text-amber-950 border border-amber-300">
+              {CUSTOM_ORDER_DEFAULT_BARCODE}
+            </code>{' '}
+            โดยอัตโนมัติ
+          </span>
+        </div>
+        <span className="text-[11px] text-amber-700 font-medium hidden sm:inline">
+          ขึ้นบรรทัดใหม่ • ไม่มีข้อความนำหน้า
+        </span>
+      </div>
+
+      {/* PRINTABLE ORDER FORM SHEET (A4 Standard) */}
       <div className="quotation-print-sheet bg-white mx-auto shadow-lg border border-slate-200 p-8 text-black print:p-0 print:border-none print:shadow-none w-full max-w-[850px] min-h-[1050px] text-[11px] font-sans">
         {/* ITEMS TABLE WITH REPEATING HEADER FOR MULTI-PAGE PRINT */}
         <table className="w-full border-collapse mb-3 text-[10px]">
@@ -151,7 +216,8 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
                         {companySettings?.branchName || ''}
                       </h1>
                       <p className="text-[10px] text-black leading-tight">
-                        {companySettings?.address || '77/191-192 อาคารสินสาธรทาวเวอร์ ชั้น 42 ถนนกรุงธนบุรี แขวงคลองต้นไทร เขตคลองสาน กรุงเทพฯ 10600 (สำนักงานใหญ่)'}
+                        {companySettings?.address ||
+                          '77/191-192 อาคารสินสาธรทาวเวอร์ ชั้น 42 ถนนกรุงธนบุรี แขวงคลองต้นไทร เขตคลองสาน กรุงเทพฯ 10600 (สำนักงานใหญ่)'}
                       </p>
                       <p className="text-[10px] text-black leading-tight">
                         {companySettings?.taxId && <span>เลขที่ประจำตัวผู้เสียภาษี {companySettings.taxId} </span>}
@@ -162,15 +228,24 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
                   </div>
                 </div>
 
-                {/* TITLE & DATE */}
+                {/* TITLE & DATE FOR ORDER FORM */}
                 <div className="relative text-center my-3">
                   <h2 className="text-base font-bold tracking-wider uppercase">
-                    ใบเสนอราคา/QUOTATION
+                    แบบฟอร์มสำหรับสั่งออเดอร์ / ORDER FORM
                   </h2>
+                  <p className="text-[10px] font-semibold text-black tracking-normal">
+                    (สำหรับฝ่ายขาย ฝ่ายผลิต และคลังสินค้า / Production & Ordering)
+                  </p>
 
-                  <div className="absolute right-0 top-0 border border-black px-3 py-1 flex items-center gap-2 text-[10px] bg-white">
-                    <span className="font-semibold">วันที่/DATE:</span>
-                    <span className="font-mono font-medium">{formatDateDisplay(quotation.date)}</span>
+                  <div className="absolute right-0 top-0 border border-black px-2.5 py-1 flex flex-col items-end text-[10px] bg-white leading-tight">
+                    <div>
+                      <span className="font-semibold">วันที่/DATE: </span>
+                      <span className="font-mono font-medium">{formatDateDisplay(quotation.date)}</span>
+                    </div>
+                    <div className="pt-0.5">
+                      <span className="font-semibold">เลขที่ใบเสนอราคา: </span>
+                      <span className="font-mono font-bold">{quotation.quotationNumber || '-'}</span>
+                    </div>
                   </div>
                 </div>
 
@@ -215,7 +290,7 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
                     </div>
                   </div>
 
-                  {/* Right Column: Validity & Payment Terms (30%) - Term of payment removed */}
+                  {/* Right Column: Validity & Payment Terms (30%) */}
                   <div className="w-[30%] basis-[30%] p-2 space-y-1.5">
                     <div className="flex flex-col sm:flex-row sm:items-baseline">
                       <span className="font-medium shrink-0 mr-1">กำหนดยืนราคา/Validity:</span>
@@ -250,8 +325,8 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
             <tr className="border-t border-b border-black text-center font-bold bg-white">
               <th className="py-1 px-1.5 border-l border-r border-black w-8">#</th>
               <th className="py-1 px-2 border-r border-black text-center">
-                รายการสินค้า
-                <div className="text-[9px] font-normal">Descriptions</div>
+                รายการสินค้า / บาร์โค้ด
+                <div className="text-[9px] font-normal">Descriptions & Barcode</div>
               </th>
               <th className="py-1 px-1 border-r border-black w-12 text-center">
                 จำนวน
@@ -299,15 +374,24 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
                   {section.items.map((item, idx) => {
                     const itemCalc = calc.itemCalculations.get(item.id);
                     const formattedName = formatItemDescription(item);
+                    const itemBarcode = getItemBarcode(item);
 
                     return (
                       <tr key={item.id} className="border-b border-black/30 bg-white">
                         <td className="py-1 px-1 border-l border-r border-black text-center font-mono">
                           {idx + 1}
                         </td>
-                        <td className="py-1 px-2 border-r border-black">
-                          <span className="font-medium">{formattedName}</span>
+
+                        {/* Descriptions with Barcode on a new line (Digits only) */}
+                        <td className="py-1 px-2 border-r border-black text-left break-words">
+                          <div className="font-medium text-black leading-snug">{formattedName}</div>
+                          {itemBarcode ? (
+                            <div className="font-mono font-bold text-black text-[10px] tracking-wide pt-0.5">
+                              {itemBarcode}
+                            </div>
+                          ) : null}
                         </td>
+
                         <td className="py-1 px-1 border-r border-black text-center font-mono">
                           {item.quantity.toFixed(2)}
                         </td>
@@ -396,7 +480,9 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
               </div>
 
               <div className="flex justify-between py-1 px-2">
-                <span className="font-medium">ส่วนลด discount</span>
+                <span className="font-medium">
+                  ส่วนลด discount {calc.totalGrossAmount > 0 ? ((calc.totalItemDiscount / calc.totalGrossAmount) * 100).toFixed(2) : 0}%
+                </span>
                 <span className="font-mono">
                   {calc.totalItemDiscount.toLocaleString('en-US', {
                     minimumFractionDigits: 2,
@@ -407,7 +493,7 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
 
               <div className="flex justify-between py-1 px-2">
                 <span className="font-medium">ราคาหลังหักส่วนลด discount</span>
-                <span className="font-mono font-medium">
+                <span className="font-mono">
                   {calc.amountAfterItemDiscount.toLocaleString('en-US', {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
@@ -476,13 +562,13 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
 
         {/* SIGNATURES SECTION */}
         <div className="grid grid-cols-3 gap-6 text-center pt-8 text-[10.5px] print-break-inside-avoid">
-          {/* Sales Signature (ผู้เสนอราคาคือพนักงานขาย) */}
+          {/* Sales Signature (ผู้เสนอราคา / ผู้สั่งออเดอร์) */}
           <div className="space-y-1 flex flex-col items-center">
             <div className="w-4/5 mx-auto h-12 flex items-end justify-center">
               {salesStaff?.signatureUrl ? (
                 <img
                   src={salesStaff.signatureUrl}
-                  alt="ลายเซ็นต์ผู้เสนอราคา"
+                  alt="ลายเซ็นต์ผู้สั่งออเดอร์"
                   className="max-h-12 max-w-full object-contain mb-0.5"
                 />
               ) : null}
@@ -491,13 +577,13 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
             <div className="font-bold pt-1 text-[10px]">
               ( {salesStaff?.name || salesPersonName || '...........................................'} )
             </div>
-            <div className="font-bold text-[10px] text-black">ผู้เสนอราคา / Sale</div>
+            <div className="font-bold text-[10px] text-black">ผู้สั่งออเดอร์ / Sale</div>
             <div className="text-[9.5px] text-black font-mono">
               {formatDateDisplay(quotation.date)}
             </div>
           </div>
 
-          {/* Inspector Signature (ผู้ตรวจสอบคือผู้ดูแล) */}
+          {/* Inspector Signature (ผู้ตรวจสอบ / ผู้อนุมัติ) */}
           <div className="space-y-1 flex flex-col items-center">
             <div className="w-4/5 mx-auto h-12 flex items-end justify-center">
               {inspectorStaff?.signatureUrl ? (
@@ -512,20 +598,20 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
             <div className="font-bold pt-1 text-[10px]">
               ( {adminNameInQuotation || inspectorStaff?.name || '...........................................'} )
             </div>
-            <div className="font-bold text-[10px] text-black">ผู้ตรวจสอบ / Inspector (ผู้ดูแล)</div>
+            <div className="font-bold text-[10px] text-black">ผู้ตรวจสอบ / Inspector</div>
             <div className="text-[9.5px] text-black font-mono">
               {formatDateDisplay(quotation.date)}
             </div>
           </div>
 
-          {/* Customer Signature */}
+          {/* Production & Warehouse Receiver Signature */}
           <div className="space-y-1 flex flex-col items-center">
             <div className="w-4/5 mx-auto h-12 flex items-end justify-center"></div>
             <div className="border-b border-black w-4/5 mx-auto"></div>
             <div className="font-bold pt-1 text-[10px]">
               ( ........................................... )
             </div>
-            <div className="font-bold text-[10px] text-black">ผู้สั่งซื้อ / Customer</div>
+            <div className="font-bold text-[10px] text-black">ผู้รับออเดอร์ฝ่ายผลิต / คลังสินค้า</div>
             <div className="text-[9.5px] text-black">
               วันที่ ......./......./.......
             </div>
