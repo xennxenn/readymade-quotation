@@ -123,10 +123,12 @@ export function getCloudFirestore(): Firestore | null {
       if (dbId && dbId !== '(default)') {
         firestoreDb = initializeFirestore(firebaseApp, {
           ignoreUndefinedProperties: true,
+          experimentalForceLongPolling: true,
         }, dbId);
       } else {
         firestoreDb = initializeFirestore(firebaseApp, {
           ignoreUndefinedProperties: true,
+          experimentalForceLongPolling: true,
         });
       }
     } catch {
@@ -246,18 +248,26 @@ export function subscribeToCloudStaff(
  * Realtime subscription to Company Settings
  */
 export function subscribeToCloudCompanySettings(
-  onUpdate: (settings: CompanySettings) => void
+  onUpdate: (settings: CompanySettings) => void,
+  onError?: (err: Error) => void
 ): Unsubscribe | null {
   const db = getCloudFirestore();
   if (!db) return null;
 
   try {
     const settingsDoc = doc(db, 'settings', 'company');
-    return onSnapshot(settingsDoc, (snapshot) => {
-      if (snapshot.exists()) {
-        onUpdate(snapshot.data() as CompanySettings);
+    return onSnapshot(
+      settingsDoc,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          onUpdate(snapshot.data() as CompanySettings);
+        }
+      },
+      (error) => {
+        console.warn('Realtime Company Settings Sync error:', error);
+        if (onError) onError(error);
       }
-    });
+    );
   } catch (e) {
     console.error('Failed to subscribe to company settings', e);
     return null;
@@ -268,20 +278,28 @@ export function subscribeToCloudCompanySettings(
  * Realtime subscription to Promotion Groups
  */
 export function subscribeToCloudPromotionGroups(
-  onUpdate: (promos: PromotionGroup[]) => void
+  onUpdate: (promos: PromotionGroup[]) => void,
+  onError?: (err: Error) => void
 ): Unsubscribe | null {
   const db = getCloudFirestore();
   if (!db) return null;
 
   try {
     const promoCol = collection(db, 'promotionGroups');
-    return onSnapshot(promoCol, (snapshot) => {
-      const list: PromotionGroup[] = [];
-      snapshot.forEach((docSnap) => {
-        list.push(docSnap.data() as PromotionGroup);
-      });
-      onUpdate(list);
-    });
+    return onSnapshot(
+      promoCol,
+      (snapshot) => {
+        const list: PromotionGroup[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push(docSnap.data() as PromotionGroup);
+        });
+        onUpdate(list);
+      },
+      (error) => {
+        console.warn('Realtime Promotion Groups Sync error:', error);
+        if (onError) onError(error);
+      }
+    );
   } catch (e) {
     console.error('Failed to subscribe to promotion groups', e);
     return null;
@@ -407,13 +425,18 @@ export async function fetchCloudProducts(): Promise<Product[] | null> {
   const db = getCloudFirestore();
   if (!db) return null;
   try {
-    const snap = await getDocs(collection(db, 'products'));
+    // Add a 6-second timeout race to prevent long blocking if connection is slow
+    const fetchPromise = getDocs(collection(db, 'products'));
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Fetch cloud products timeout')), 6000)
+    );
+    const snap = await Promise.race([fetchPromise, timeoutPromise]);
     if (snap.empty) return [];
     const list: Product[] = [];
     snap.forEach((d) => list.push(d.data() as Product));
     return list;
   } catch (err) {
-    console.error('Error fetching cloud products:', err);
+    console.warn('Could not fetch cloud products immediately (using cached IndexedDB):', err);
     return null;
   }
 }
@@ -599,60 +622,47 @@ export async function clearAllProductsFromCloud(): Promise<boolean> {
 /**
  * Purges any initial/mock sample records from Firestore permanently.
  * Guarantees that only user-uploaded or newly created real data exists.
+ * Runs once and caches state in localStorage to avoid flooding the connection.
  */
 export async function purgeMockDataFromCloud(): Promise<void> {
+  const MOCK_PURGED_KEY = 'pasaya_cloud_mock_purged_v2';
+  try {
+    if (localStorage.getItem(MOCK_PURGED_KEY) === 'true') {
+      return;
+    }
+  } catch {
+    // ignore localStorage error
+  }
+
   const db = getCloudFirestore();
   if (!db) return;
 
   try {
-    // 1. Delete mock dummy products p-1 to p-40
+    const deleteTasks: Promise<any>[] = [];
+
+    // Delete dummy products p-1 to p-40 directly without roundtrip getDoc
     for (let i = 1; i <= 40; i++) {
-      try {
-        const ref = doc(db, 'products', `p-${i}`);
-        const snap = await getDoc(ref);
-        if (snap.exists()) {
-          await deleteDoc(ref);
-        }
-      } catch (e) {
-        // ignore individual delete failure
-      }
+      deleteTasks.push(deleteDoc(doc(db, 'products', `p-${i}`)).catch(() => {}));
     }
 
-    // 2. Delete mock promotion groups
+    // Delete mock promotion groups
     for (let i = 1; i <= 10; i++) {
-      try {
-        const ref = doc(db, 'promotionGroups', `promo-${i}`);
-        const snap = await getDoc(ref);
-        if (snap.exists()) {
-          await deleteDoc(ref);
-        }
-      } catch (e) {
-        // ignore
-      }
+      deleteTasks.push(deleteDoc(doc(db, 'promotionGroups', `promo-${i}`)).catch(() => {}));
     }
 
-    // 3. Delete mock sample quotations
-    try {
-      const qRef = doc(db, 'quotations', 'quote-sample-001');
-      const qSnap = await getDoc(qRef);
-      if (qSnap.exists()) {
-        await deleteDoc(qRef);
-      }
-    } catch (e) {
-      // ignore
-    }
+    // Delete mock sample quotations
+    deleteTasks.push(deleteDoc(doc(db, 'quotations', 'quote-sample-001')).catch(() => {}));
 
-    // 4. Delete mock staff st-1 to st-6
+    // Delete mock staff st-1 to st-6
     for (let i = 1; i <= 6; i++) {
-      try {
-        const ref = doc(db, 'staff', `st-${i}`);
-        const snap = await getDoc(ref);
-        if (snap.exists()) {
-          await deleteDoc(ref);
-        }
-      } catch (e) {
-        // ignore
-      }
+      deleteTasks.push(deleteDoc(doc(db, 'staff', `st-${i}`)).catch(() => {}));
+    }
+
+    await Promise.allSettled(deleteTasks);
+    try {
+      localStorage.setItem(MOCK_PURGED_KEY, 'true');
+    } catch {
+      // ignore
     }
   } catch (err) {
     console.warn('Error purging mock data from cloud:', err);
@@ -687,34 +697,42 @@ export async function initializeCloudDatabaseSeed(): Promise<{
   if (!db) return result;
 
   try {
-    // 0. Purge any legacy mock records from Firestore
-    await purgeMockDataFromCloud();
+    const seedTask = (async () => {
+      // 0. Purge any legacy mock records from Firestore
+      await purgeMockDataFromCloud();
 
-    // 1. Ensure Admin Account (T58121) exists in Firestore if no admin is present
-    const adminRef = doc(db, 'staff', 'st-admin-t58121');
-    const adminSnap = await getDoc(adminRef);
-    if (!adminSnap.exists()) {
-      await setDoc(adminRef, sanitizeForFirestore({
-        id: 'st-admin-t58121',
-        name: 'ผู้ดูแลระบบ (Admin)',
-        employeeId: 'T58121',
-        password: 'Admin',
-        role: 'admin',
-        phone: '02-440-0955',
-        createdAt: Date.now(),
-      }));
-      result.seededStaff = true;
-    }
+      // 1. Ensure Admin Account (T58121) exists in Firestore if no admin is present
+      const adminRef = doc(db, 'staff', 'st-admin-t58121');
+      const adminSnap = await getDoc(adminRef);
+      if (!adminSnap.exists()) {
+        await setDoc(adminRef, sanitizeForFirestore({
+          id: 'st-admin-t58121',
+          name: 'ผู้ดูแลระบบ (Admin)',
+          employeeId: 'T58121',
+          password: 'Admin',
+          role: 'admin',
+          phone: '02-440-0955',
+          createdAt: Date.now(),
+        }));
+        result.seededStaff = true;
+      }
 
-    // 2. Check Company Settings in Firestore
-    const settingsDoc = doc(db, 'settings', 'company');
-    const settingsSnap = await getDoc(settingsDoc);
-    if (!settingsSnap.exists()) {
-      await setDoc(settingsDoc, sanitizeForFirestore(DEFAULT_COMPANY_SETTINGS));
-      result.seededSettings = true;
-    }
+      // 2. Check Company Settings in Firestore
+      const settingsDoc = doc(db, 'settings', 'company');
+      const settingsSnap = await getDoc(settingsDoc);
+      if (!settingsSnap.exists()) {
+        await setDoc(settingsDoc, sanitizeForFirestore(DEFAULT_COMPANY_SETTINGS));
+        result.seededSettings = true;
+      }
+    })();
+
+    const timeoutTask = new Promise<void>((_, reject) =>
+      setTimeout(() => reject(new Error('Cloud seed timeout')), 6000)
+    );
+
+    await Promise.race([seedTask, timeoutTask]);
   } catch (err) {
-    console.error('Error during cloud database initialization:', err);
+    console.warn('Cloud database initialization skipped or delayed:', err);
   }
 
   return result;
